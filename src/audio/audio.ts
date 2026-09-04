@@ -247,6 +247,98 @@ export class AudioEngine {
     o.start(); o.stop(end + 0.05);
   }
 
+  /**
+   * Combat sounds, all synthesised on the spot.
+   *
+   * A sword swing is a filtered noise sweep — the pitch of the sweep is what tells you how heavy
+   * the blow was — and an impact is that same noise plus a short metallic ring, so a clean hit and
+   * a whiff are instantly distinguishable without any sample library.
+   */
+  playCombat(kind: 'swing' | 'swingLight' | 'swingHeavy' | 'swingEnemy' | 'impact' | 'impactHeavy'
+    | 'hurt' | 'dodge' | 'telegraph' | 'defeat' | 'encounter' | 'clear', pos?: Vec3): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const dest = this.panner(pos ?? null);
+
+    const whoosh = (dur: number, f0: number, f1: number, q: number, level: number): void => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise.white!;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = q;
+      bp.frequency.setValueAtTime(f0, t0);
+      bp.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+      const g = ctx.createGain();
+      src.connect(bp); bp.connect(g); g.connect(dest);
+      const end = blip(g.gain, t0, level, dur * 0.18, dur * 0.9);
+      src.start(); src.stop(end + 0.05);
+    };
+
+    const ring = (freq: number, dur: number, level: number, type: OscillatorType = 'triangle'): void => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t0);
+      o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * 0.55), t0 + dur);
+      const g = ctx.createGain();
+      o.connect(g); g.connect(dest);
+      const end = blip(g.gain, t0, level, 0.004, dur);
+      o.start(); o.stop(end + 0.05);
+    };
+
+    const thud = (level: number, dur: number): void => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise.brown!;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(320, t0);
+      lp.frequency.exponentialRampToValueAtTime(90, t0 + dur);
+      const g = ctx.createGain();
+      src.connect(lp); lp.connect(g); g.connect(dest);
+      const end = blip(g.gain, t0, level, 0.005, dur);
+      src.start(); src.stop(end + 0.05);
+    };
+
+    switch (kind) {
+      case 'swing':      whoosh(0.20, 2400, 620, 1.4, 0.16); break;
+      case 'swingLight': whoosh(0.14, 3200, 900, 2.0, 0.11); break;
+      case 'swingHeavy': whoosh(0.34, 1500, 260, 1.0, 0.24); ring(150, 0.22, 0.05, 'sine'); break;
+      case 'swingEnemy': whoosh(0.26, 1200, 330, 1.1, 0.15); break;
+      case 'impact':
+        whoosh(0.09, 5200, 1800, 3.0, 0.20);
+        ring(880 + rand(-90, 90), 0.16, 0.14);
+        thud(0.16, 0.16);
+        break;
+      case 'impactHeavy':
+        whoosh(0.14, 4200, 900, 2.2, 0.30);
+        ring(560 + rand(-70, 70), 0.34, 0.20);
+        ring(1420, 0.20, 0.09, 'sine');
+        thud(0.34, 0.28);
+        break;
+      case 'hurt':
+        thud(0.30, 0.24);
+        ring(220, 0.20, 0.10, 'sawtooth');
+        break;
+      case 'dodge':      whoosh(0.24, 900, 240, 0.9, 0.10); break;
+      case 'telegraph':  ring(320, 0.42, 0.09, 'sawtooth'); whoosh(0.4, 400, 1600, 3.5, 0.05); break;
+      case 'defeat':
+        whoosh(0.55, 1800, 180, 0.8, 0.16);
+        ring(180, 0.6, 0.11, 'sine');
+        ring(268, 0.5, 0.07, 'sine');
+        break;
+      case 'encounter':
+        ring(72, 1.1, 0.20, 'sine');
+        ring(108, 0.9, 0.10, 'triangle');
+        whoosh(0.9, 220, 60, 0.7, 0.10);
+        break;
+      case 'clear':
+        ring(392, 0.9, 0.10, 'sine');
+        ring(587, 0.8, 0.07, 'sine');
+        break;
+    }
+  }
+
   /** A big rising swell with a bell strike; index 0..2 raises the pitch and brightness. */
   playStoneActivate(index: number, pos: Vec3): void {
     if (!this.ctx) return;

@@ -12,6 +12,10 @@ export class HUD {
   private finale = document.getElementById('finale')!;
   private toastTimer = 0;
   private objTimer = 0;
+  private damage = document.getElementById('damage');
+  private vitals = document.getElementById('vitals');
+  private vitalsFill = this.vitals?.querySelector<HTMLElement>('.fill') ?? null;
+  private dmgTimer = 0;
 
   show(): void { this.root.hidden = false; }
   hide(): void { this.root.hidden = true; }
@@ -34,6 +38,21 @@ export class HUD {
     this.toast.classList.add('show');
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), seconds * 1000);
+  }
+
+  /** Red vignette pulse when the player takes a hit. */
+  flashDamage(): void {
+    if (!this.damage) return;
+    this.damage.classList.add('show');
+    clearTimeout(this.dmgTimer);
+    this.dmgTimer = window.setTimeout(() => this.damage?.classList.remove('show'), 240);
+  }
+
+  /** Show the combat vitals bar only while a fight is live. */
+  setVitals(visible: boolean, health01: number): void {
+    if (!this.vitals) return;
+    this.vitals.classList.toggle('show', visible);
+    if (this.vitalsFill) this.vitalsFill.style.transform = `scaleX(${Math.max(0, Math.min(1, health01))})`;
   }
 
   setLetterbox(on: boolean): void { this.letterbox.classList.toggle('show', on); }

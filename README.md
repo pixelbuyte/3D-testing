@@ -1,7 +1,8 @@
 # Echoes of the Shrine
 
-A small, cinematic first-person exploration game that runs in the browser. You arrive at a forgotten
-mountain shrine just after rainfall, at dusk. Three ancient stones sleep among the ruins. Wake them.
+A small, cinematic exploration game that runs in the browser, with a short real-time melee loop on
+top. You arrive at a forgotten mountain shrine just after rainfall, at dusk. Three ancient stones
+sleep among the ruins. Something has followed you up the path. Wake the stones anyway.
 
 Built on **PlayCanvas Engine 2.x** with a **WebGPU-first** renderer and an automatic **WebGL 2**
 fallback. Everything is TypeScript, bundled with Vite. The world — terrain, architecture, foliage,
@@ -44,10 +45,14 @@ node tools/shots.mjs --preset high --out screenshots/run \
 | `Shift` | Sprint (widens FOV slightly) |
 | `Space` | Hop |
 | `E` | Attune to a stone, or greet a figure, when the prompt appears |
+| **Left mouse** | Strike — three-hit katana combo |
+| **Right mouse** | Heavy overhead slash |
+| `Space` | Evade (dodge-cancels an incoming blow; it is Jump outside combat) |
 | `Esc` | Settings / pause |
 
 Useful URL parameters: `?preset=ultra|high|medium`, `?state=0..3` (jump to a world state),
-`?webgl=1` (force the WebGL 2 path), `?shot=1` (skip the title screen, for tooling).
+`?encounter=0..2` (drop straight into a fight), `?webgl=1` (force the WebGL 2 path),
+`?shot=1` (skip the title screen, for tooling).
 
 ---
 
@@ -60,6 +65,7 @@ src/
   world/       terrain field & renderer, shrine architecture, scatter/instancing, water,
                trees, leaf-atlas generation, materials, level layout, procedural NPC figures
   player/      input, kinematic capsule collision, first-person controller
+  combat/      fighter rig + pose animation, characters, weapons and trails, combat director, VFX
   gameplay/    game loop, director (states, stones, finale), energy stones, NPC director
   effects/     particle systems, god rays and mist banks
   shaders/     GLSL + WGSL chunk overrides (terrain, wet surfaces, wind, water, particles, stone)
@@ -148,6 +154,69 @@ public/assets/ packed runtime assets (textures, models, HDRI)
 
 ---
 
+## Combat
+
+The shrine is worth defending, so a small amount of real-time melee sits on top of the exploration.
+The scope is fixed on purpose: **one player, one ally, three staged encounters of two to four
+enemies**. There are no levels, no loot, no skill trees — the effort went into how a swing feels.
+
+<p align="center">
+  <img src="docs/shots/combat-duel.jpg" width="49%" alt="The warrior mid-slash with a katana trail, the nunchuck ally beside them, masked enemies closing">
+  <img src="docs/shots/combat-melee.jpg" width="49%" alt="A three-enemy melee in the courtyard">
+  <img src="docs/shots/combat-cast.jpg" width="49%" alt="The three fighters side by side: warrior, ally, shadow warrior">
+  <img src="docs/shots/combat-elite.jpg" width="49%" alt="The horned elite at the awakened shrine">
+</p>
+
+**The cast.** A katana warrior (you), a nunchuck ally who joins from the courtyard onward, and
+masked shadow warriors in three builds — grunt, blade, and one horned elite at the shrine. They are
+told apart by shape rather than colour: the warrior is broad-shouldered and vertical, the ally is
+narrow and diagonal with a trailing scarf, the enemies are hunched and ragged with a pale face plate
+that is the only bright thing on them.
+
+**The rig.** Combat needs elbows and knees, which the ambient NPCs (which animate whole body parts)
+cannot do. Fighters use `src/combat/rig.ts`: a nineteen-joint hierarchy where geometry hangs off the
+joint it belongs to and animation is pure local rotation — no skinning, no bone weights. Everything
+a character puts on one joint in one material is merged into a single mesh at build time, so a
+fighter costs about a dozen draw calls rather than thirty.
+
+**The animation.** Poses are hand-authored keyframes (`src/combat/clips.ts`) evaluated by a small
+animator that exists mainly to avoid the two things that make procedural characters look robotic:
+
+- **Per-key easing.** A key carries its own curve, so a slash accelerates out of its wind-up
+  (`in`), overshoots into the impact (`snap`), and springs back rather than sliding home
+  (`settle`, a damped cosine).
+- **Cross-fades from a snapshot.** A state change blends from wherever the body actually was, so
+  interrupting a combo never pops.
+- **An upper-body mask.** Light attacks only write the spine and arms, so you can swing while
+  running and the legs keep their stride.
+- Additive breathing, a lean into travel, and a head that tracks what you are fighting sit on top of
+  whatever clip is playing.
+
+Every strike is built as anticipation → accelerate → impact → follow-through → recover, and the
+damage window is opened and closed by **animation events**, not a timer — so a hit lands on the
+frame the blade is actually through the target.
+
+**Feel.** Hit-stop freezes the frame for 40–75 ms on contact; a two-axis decaying shake rides on top
+of wherever the camera already is; a ribbon trail is rebuilt each frame from the blade's recent
+positions, which is the single cheapest thing that turns four keyframes into an arc the eye can
+follow. Attacks lunge you forward — but only as far as there is something to close on, since an
+attack that always slides you a metre walks you out of the fight when you swing at air.
+
+**Enemy behaviour** is a flat state machine (idle → chase → wind-up → attack → recover, plus stagger
+and a dissolve on defeat) with one addition that matters more than the rest: **only one enemy holds
+the attack token at a time**. The others circle at a readable distance. Without it, three enemies
+commit at once, which is both impossible to defend and impossible to read.
+
+**Encounters** are staged along the existing route — two at the outer gate to teach the loop, three
+in the courtyard where the ally arrives, and the elite at the awakened shrine. The camera swings out
+to a third-person boom when a fight starts and eases back to first person when it clears; the boom
+pulls in when it would clip geometry.
+
+Combat costs about **0.4 ms of CPU per frame** for five fighters, and the effects are fixed-size
+pools that never allocate mid-fight.
+
+---
+
 ## The people at the shrine
 
 The shrine is not empty. Six procedural figures give the level scale and tell you, without a single
@@ -204,6 +273,9 @@ Entirely procedural Web Audio — no sound files ship with the game:
 - Spatialised (HRTF panner) shrine hums, water ambience, door grind and stone activations.
 - A slow pentatonic score that layers in across four stages, climaxing with a swelling pad.
 - Nova's formant singing voice (see above), spatialised and harmonised by world state.
+- Combat: sword swings are filtered noise sweeps whose pitch tells you how heavy the blow was, and
+  impacts add a short metallic ring plus a low thud, so a clean hit and a whiff sound different
+  without any sample library.
 - Convolution reverb from generated impulse responses, switched between open / courtyard / sanctum
   as the player moves.
 
@@ -215,9 +287,14 @@ Entirely procedural Web Audio — no sound files ship with the game:
   WebGL 2 only (SwiftShader), so every screenshot in `screenshots/` is from the WebGL 2 fallback
   path. The WebGPU path is implemented — WGSL is provided for every custom chunk and the device is
   requested first — but it has not been run on real hardware.
-- Frame rates in the shipped screenshots (~10 fps) are software-rasteriser numbers, not
-  representative. Triangle load at High is roughly 5–11M submitted before culling; a real GPU should
-  hold 60 fps, but this has not been measured on one.
+- Frame rates here are software-rasteriser numbers and are not representative. They are also worse
+  than earlier versions of this file claimed: the old counter divided by the frame delta, which the
+  engine clamps to `maxDeltaTime`, so it reported a flat "10 fps" that was really just `1/0.1`. The
+  honest figure on SwiftShader is closer to **1 fps**. Triangle load at High is roughly 5–11M
+  submitted before culling; a real GPU should hold 60, but that has not been measured on one.
+- Because of that, combat is verified by stepping the simulation directly rather than in wall-clock
+  time — `__ECHOES.simulate(seconds)` advances the fight without rendering, which is how the
+  encounter, hit-detection and defeat paths are regression-tested.
 - The sky reads bluer than a true dusk. Raising `skyIntensity` was what stopped unlit verticals
   (torii legs, banner posts, the sealed doors) from crushing to flat black, but in PlayCanvas that
   one value scales both the image-based lighting and the visible sky dome, so the fix for the

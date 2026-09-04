@@ -4,6 +4,15 @@ export interface DebugHooks {
   stats: () => Record<string, unknown>;
   setCamera: (x: number, y: number, z: number, yawDeg: number, pitchDeg: number) => void;
   setState: (n: number) => void;
+  /** tooling: jump straight into combat encounter n */
+  encounter?: (n: number) => void;
+  /** tooling: line the fighters up in front of a camera at (x,z,yaw) running one clip */
+  preview?: (x: number, z: number, yaw: number, which?: string) => void;
+  /** tooling: fire an attack without pointer lock */
+  attack?: (kind: string) => boolean;
+  /** tooling: advance the fight without rendering */
+  simulate?: (seconds: number) => void;
+  enemyHealth?: () => number[];
   freeCam: (on: boolean) => void;
   world?: unknown;
 }
@@ -21,6 +30,8 @@ export function installDebug(h: DebugHooks): DebugHooks {
   }
   const st = p.get('state');
   if (st) h.setState(Number(st));
+  const enc = p.get('encounter');
+  if (enc && h.encounter) h.encounter(Number(enc));
   return h;
 }
 

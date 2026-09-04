@@ -40,6 +40,18 @@ export class PlayerController extends Emitter<PlayerEvents> {
   speed = 0;
   private standOut = { standY: null as number | null };
   private tmp = new Vec3();
+  /** third-person framing: the camera orbits behind the character during combat */
+  thirdPerson = false;
+  private tpBlend = 0;
+  tpDistance = 3.15;
+  tpHeight = 1.52;
+  tpShoulder = 0.52;
+  /** combat can slow the character without touching the tuned acceleration curves */
+  speedScale = 1;
+  /** while a fight is live, Space is the dodge button rather than jump */
+  suppressJump = false;
+  private tpPos = new Vec3();
+  private tpDir = new Vec3();
 
   constructor(private input: Input, private collision: CollisionWorld, private terrain: TerrainField, public camera: Entity) {
     super();
@@ -78,14 +90,14 @@ export class PlayerController extends Emitter<PlayerEvents> {
 
     // ---- movement intent
     let mx = 0, mz = 0, sprint = false, jump = false;
-    if (this.enabled && !this.frozen) { mx = inp.moveX; mz = inp.moveZ; sprint = inp.sprint && mz > 0; jump = inp.wasPressed('Space'); }
+    if (this.enabled && !this.frozen) { mx = inp.moveX; mz = inp.moveZ; sprint = inp.sprint && mz > 0; jump = !this.suppressJump && inp.wasPressed('Space'); }
     const len = Math.hypot(mx, mz);
     if (len > 1) { mx /= len; mz /= len; }
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     // forward = (-sin yaw, 0, -cos yaw); right = (cos yaw, 0, -sin yaw)
     const wishX = (-sy) * mz + cy * mx;
     const wishZ = (-cy) * mz - sy * mx;
-    const maxSpeed = sprint ? SPRINT : WALK;
+    const maxSpeed = (sprint ? SPRINT : WALK) * this.speedScale;
     const targetVX = wishX * maxSpeed, targetVZ = wishZ * maxSpeed;
     const accel = this.grounded ? (len > 0 ? 18 : 26) : 5;
     this.vel.x = damp(this.vel.x, targetVX, accel, dt);
@@ -156,7 +168,7 @@ export class PlayerController extends Emitter<PlayerEvents> {
     this.applyCamera(dt);
   }
 
-  private applyCamera(_dt: number): void {
+  private applyCamera(dt: number): void {
     const bobY = -Math.abs(Math.sin(this.bobPhase)) * 0.042 * this.bobAmount;
     const bobX = Math.sin(this.bobPhase * 0.5 + Math.PI * 0.5) * 0.018 * this.bobAmount;
     const breathY = Math.sin(this.time * 1.15) * 0.0045;
@@ -165,12 +177,44 @@ export class PlayerController extends Emitter<PlayerEvents> {
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const rightX = cy, rightZ = -sy;
     this.eye.set(this.pos.x + rightX * bobX, this.pos.y + EYE + bobY + breathY + this.landY, this.pos.z + rightZ * bobX);
+    const pitchDeg = (this.pitch + breathPitch) / DEG + this.landY * 6;
+
+    // --- ease between first and third person rather than cutting: a hard swap on drawing the
+    //     sword reads as a bug, and the blend doubles as the "step back into the fight" beat
+    this.tpBlend = damp(this.tpBlend, this.thirdPerson ? 1 : 0, 5, dt || 1 / 60);
+    if (this.tpBlend > 0.001) {
+      this.camera.setEulerAngles(pitchDeg, this.yaw / DEG, roll / DEG);
+      this.tpDir.copy(this.camera.forward);
+      // orbit target sits at the character's chest, offset over the shoulder
+      const tx = this.pos.x + rightX * this.tpShoulder;
+      const ty = this.pos.y + this.tpHeight;
+      const tz = this.pos.z + rightZ * this.tpShoulder;
+      // pull in if the boom would pass through geometry
+      const want = this.tpDistance;
+      this.tmp.set(-this.tpDir.x, -this.tpDir.y, -this.tpDir.z);
+      this.tpPos.set(tx, ty, tz);
+      const hit = this.collision.rayDistance(this.tpPos, this.tmp, want + 0.4);
+      const dist = Math.min(want, Math.max(0.9, hit - 0.32));
+      this.tpPos.set(tx + this.tmp.x * dist, ty + this.tmp.y * dist, tz + this.tmp.z * dist);
+      this.eye.lerp(this.eye, this.tpPos, this.tpBlend);
+    }
     this.camera.setPosition(this.eye);
-    this.camera.setEulerAngles((this.pitch + breathPitch) / DEG + this.landY * 6, this.yaw / DEG, roll / DEG);
+    this.camera.setEulerAngles(pitchDeg, this.yaw / DEG, roll / DEG);
     this.forward.copy(this.camera.forward);
     const cam = this.camera.camera;
-    if (cam) cam.fov = lerp(settings.get('fov'), settings.get('fov') + 7, this.sprintF);
+    if (cam) cam.fov = lerp(settings.get('fov'), settings.get('fov') + 7, this.sprintF) + this.tpBlend * 4;
   }
+
+  /**
+   * Turn the view by `d` radians without fighting the mouse.
+   *
+   * Soft targeting uses this on the first frame of a swing: the character squares up to whoever is
+   * in front, but only part of the way, so the player never feels the camera taken off them.
+   */
+  nudgeYaw(d: number): void { this.targetYaw += d; this.yaw += d * 0.6; }
+
+  /** 0 while first-person, 1 once the third-person boom is fully out. */
+  get thirdPersonBlend(): number { return this.tpBlend; }
 
   surface(): Surface {
     const wl = this.waterLevelAt(this.pos.x, this.pos.z);

@@ -81,3 +81,22 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 #menu .btn.primary { border-color: var(--gold); color: var(--gold); }
 #menu .btn:hover { background: rgba(255,255,255,0.05); }
 #menu .stats { margin-top: 14px; font-size: 10px; letter-spacing: 0.15em; color: rgba(236,228,214,0.4); white-space: pre-line; }
+
+/* --- combat --------------------------------------------------------------- */
+/* The vitals bar is the only persistent combat UI: it appears with the fight and leaves with it,
+   so exploration keeps its clean frame. */
+#vitals { position: absolute; left: 50%; bottom: 8.5vh; transform: translateX(-50%) translateY(8px);
+  display: flex; align-items: center; gap: 12px; opacity: 0; pointer-events: none;
+  transition: opacity .45s ease, transform .45s cubic-bezier(0.2,0.9,0.3,1); }
+#vitals.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#vitals .cap { font-size: 10px; letter-spacing: .34em; color: rgba(236,228,214,.55); }
+#vitals .bar { position: relative; width: 22vw; max-width: 300px; min-width: 160px; height: 3px;
+  background: rgba(236,228,214,.14); overflow: hidden; }
+#vitals .fill { position: absolute; inset: 0; transform-origin: left center;
+  background: linear-gradient(90deg, #7fd8e4, #d8b273); transition: transform .22s ease-out; }
+
+/* A hit reads at the edges of the frame, never over the middle of the action. */
+#damage { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 6;
+  background: radial-gradient(ellipse at center, rgba(120,10,14,0) 42%, rgba(150,14,18,.72) 100%);
+  transition: opacity .22s ease-out; }
+#damage.show { opacity: 1; transition-duration: .05s; }

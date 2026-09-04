@@ -30,6 +30,17 @@ export class Input {
       this.onLockChange(this.locked);
     });
     document.addEventListener('pointerlockerror', () => { this.locked = false; this.onLockChange(false); });
+    // mouse buttons come through as pseudo key codes ('Mouse0', 'Mouse2') so combat can query them
+    // with the same down()/wasPressed() edge handling as the keyboard
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (!this.locked) return;
+      e.preventDefault();
+      const code = `Mouse${e.button}`;
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
+    });
+    window.addEventListener('mouseup', (e) => this.keys.delete(`Mouse${e.button}`));
+    this.canvas.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); });
   }
 
   setLockListener(fn: (locked: boolean) => void): void { this.onLockChange = fn; }

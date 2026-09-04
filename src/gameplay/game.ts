@@ -9,6 +9,7 @@ import { SettingsMenu, type HeroModelSource } from '@/ui/menu';
 import { AudioEngine } from '@/audio/audio';
 import { Director, type GameState } from './director';
 import { NpcDirector } from './npcs';
+import { CombatDirector } from '@/combat/combat';
 import { HeroProp } from '@/world/heroProp';
 import { LEVEL } from '@/world/level';
 import { installDebug, isShotMode, urlParams } from '@/core/debug';
@@ -22,10 +23,11 @@ export class Game {
   audio = new AudioEngine();
   director: Director;
   npcs: NpcDirector;
+  combat: CombatDirector;
   menu: SettingsMenu;
   hero: HeroProp;
   freeCam = false;
-  private fpsAcc = 0; private fpsN = 0; private fps = 0;
+  private fpsT0 = performance.now(); private fpsN = 0; private fps = 0;
   private up = new Vec3(0, 1, 0);
   private audioStarted = false;
 
@@ -43,6 +45,8 @@ export class Game {
     });
 
     this.npcs = new NpcDirector(ctx, world, this.audio, this.hud);
+
+    this.combat = new CombatDirector(ctx, world, this.audio, this.hud, this.player);
 
     this.hero = new HeroProp(ctx, assets, world.shrine.heroSlot);
     void this.hero.set({ kind: 'builtin', id: settings.get('heroModel') });
@@ -68,6 +72,11 @@ export class Game {
         this.world.camera.setEulerAngles(pitch, yaw, 0);
       },
       setState: (n) => this.director.applyState(Math.max(0, Math.min(3, n)) as GameState),
+      encounter: (n: number) => this.combat.forceEncounter(n),
+      preview: (x: number, z: number, yaw: number, which?: string) => this.combat.preview(x, z, yaw, which as never),
+      attack: (k: string) => this.combat.debugAttack(k as never),
+      simulate: (sec: number) => this.combat.simulate(sec, this.input),
+      enemyHealth: () => this.combat.debugEnemyHealth(),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       world: this.world,
     });
@@ -114,7 +123,11 @@ export class Game {
   }
 
   private update(dt: number): void {
-    if (dt > 0) { this.fpsAcc += dt; this.fpsN++; if (this.fpsAcc > 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; } }
+    // Measure against the wall clock, not dt: the engine clamps dt to maxDeltaTime, so dividing by
+    // it reports the clamp (a flat 10) rather than the frame rate, which hid a 10x slowdown.
+    const now = performance.now();
+    this.fpsN++;
+    if (now - this.fpsT0 > 500) { this.fps = (this.fpsN * 1000) / (now - this.fpsT0); this.fpsT0 = now; this.fpsN = 0; }
     this.input.enabled = !this.menu.isOpen;
 
     if (!this.freeCam) {
@@ -132,12 +145,37 @@ export class Game {
     this.director.update(dt, pos, this.freeCam ? pos : this.player.eyePosition, fwd);
     this.npcs.update(dt, pos, this.director.activated, this.director.promptActive);
     this.npcs.setAwakeness(this.director.activated / 3);
+    this.combat.update(dt, this.input, this.freeCam);
+    this.hud.setVitals(this.combat.inCombat, this.combat.health01);
+    this.applyShake(dt);
 
     this.world.update(dt, this.world.camera.getPosition());
     this.hero.update(dt);
     this.menu.update(dt);
     this.audio.update(dt, this.world.camera.getPosition(), this.world.camera.forward, this.up);
     this.input.endFrame();
+  }
+
+  /**
+   * Impact shake, added on top of wherever the controller put the camera.
+   *
+   * Deliberately small and short: the brief asked not to overdo it, and on a third-person boom a
+   * big shake reads as a broken camera rather than as force. Two decaying sine axes at different
+   * frequencies avoid the tell-tale single-axis wobble.
+   */
+  private shakeT = 0;
+  private applyShake(dt: number): void {
+    const a = this.combat.shakeAmount;
+    if (a <= 0.002) return;
+    this.shakeT += dt;
+    const cam = this.world.camera;
+    const k = a * a * 0.85;
+    const e = cam.getEulerAngles();
+    cam.setEulerAngles(
+      e.x + Math.sin(this.shakeT * 62) * k,
+      e.y + Math.sin(this.shakeT * 47 + 1.3) * k * 1.2,
+      e.z + Math.sin(this.shakeT * 39 + 2.1) * k * 0.9,
+    );
   }
 
   stats(): Record<string, unknown> {
@@ -150,6 +188,7 @@ export class Game {
       triangles: s.frame.triangles,
       renderScale: this.world.postfx.effectiveScale,
       stones: `${this.director.activated}/3`,
+      ...this.combat.stats(),
       position: `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`,
       heading: `${Math.round(((this.player.yaw / DEG) % 360 + 360) % 360)}°`,
     };
