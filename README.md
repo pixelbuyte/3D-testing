@@ -43,7 +43,7 @@ node tools/shots.mjs --preset high --out screenshots/run \
 | Mouse | Look (pointer lock; click the canvas to capture) |
 | `Shift` | Sprint (widens FOV slightly) |
 | `Space` | Hop |
-| `E` | Attune to a stone when the prompt appears |
+| `E` | Attune to a stone, or greet a figure, when the prompt appears |
 | `Esc` | Settings / pause |
 
 Useful URL parameters: `?preset=ultra|high|medium`, `?state=0..3` (jump to a world state),
@@ -58,12 +58,12 @@ src/
   core/        engine bootstrap (device selection), settings store, event emitter, debug hooks
   rendering/   lighting + mood system, global height fog, CameraFrame post-processing
   world/       terrain field & renderer, shrine architecture, scatter/instancing, water,
-               trees, leaf-atlas generation, materials, level layout
+               trees, leaf-atlas generation, materials, level layout, procedural NPC figures
   player/      input, kinematic capsule collision, first-person controller
-  gameplay/    game loop, director (states, stones, finale), energy stones
+  gameplay/    game loop, director (states, stones, finale), energy stones, NPC director
   effects/     particle systems, god rays and mist banks
   shaders/     GLSL + WGSL chunk overrides (terrain, wet surfaces, wind, water, particles, stone)
-  audio/       procedural Web Audio engine and synthesis helpers
+  audio/       procedural Web Audio engine, synthesis helpers, formant singing voice
   ui/          loading screen, HUD, settings menu, stylesheet
   assets/      asset manifest / loader
   utils/       math, noise, geometry builders
@@ -146,6 +146,44 @@ public/assets/ packed runtime assets (textures, models, HDRI)
 
 ---
 
+## The people at the shrine
+
+The shrine is not empty. Six procedural figures give the level scale and tell you, without a single
+line of exposition, that someone still tends this place.
+
+**Nova** stands at the head of the courtyard, and she sings. Her voice is synthesised live rather
+than played back (`src/audio/voice.ts`): a sawtooth glottal source plus a sub-octave sine and a
+breath-noise layer are pushed through three parallel band-pass filters tuned to real vowel formants,
+with a vibrato oscillator driving `detune` and legato pitch glides between notes. She wanders a
+pentatonic phrase with rests between them, so the melody never loops audibly. The voice is
+spatialised through an HRTF panner, so it swells as you walk toward her and moves correctly as you
+turn your head. Each stone you wake adds a harmony voice a third and a fifth above the root — by the
+finale she is singing in three parts.
+
+The other five are silent: a pilgrim walking the approach path back and forth, a figure kneeling in
+seiza before the altar, and three watchers standing at the courtyard edge and by the ruin. Walking
+close to any of them (except the one at prayer) offers `[E] GREET`, and they answer with a line.
+
+All six are built from the same ~1,300-triangle procedural body (`src/world/npc.ts`), which is
+designed for silhouette rather than detail because it is nearly always seen at distance through fog:
+
+- The robe sections are generated with an **elliptical cross-section** and a **cosine radius
+  modulation**, so the body is wider than it is deep and the cloth carries vertical folds. A plain
+  cylinder here reads as a traffic cone.
+- A pale **shawl over the shoulders** sits over a darker robe with the arms hanging clear of it.
+  That wide-over-narrow value break is what makes a figure read as a person at 30 m.
+- Head, hair and hands are separate materials, so there is a value break at the face instead of a
+  featureless ball.
+- Kneeling figures use their own proportion table (folded legs, pooled hem, shorter arms) rather
+  than a squashed standing body.
+- Idle animation is per-entity transform only — no skinning: breathing, a slow weight shift, head
+  turn, arm swing on the walker, and figures glancing at you when you come within 14 m.
+
+Nova also carries a soft omni light that brightens with her song and with the shrine's state, which
+is what lifts her off the dusk background in the wide courtyard shot.
+
+---
+
 ## Audio
 
 Entirely procedural Web Audio — no sound files ship with the game:
@@ -156,6 +194,7 @@ Entirely procedural Web Audio — no sound files ship with the game:
   landing and jump sounds.
 - Spatialised (HRTF panner) shrine hums, water ambience, door grind and stone activations.
 - A slow pentatonic score that layers in across four stages, climaxing with a swelling pad.
+- Nova's formant singing voice (see above), spatialised and harmonised by world state.
 - Convolution reverb from generated impulse responses, switched between open / courtyard / sanctum
   as the player moves.
 

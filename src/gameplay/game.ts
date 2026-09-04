@@ -8,6 +8,7 @@ import { HUD } from '@/ui/hud';
 import { SettingsMenu, type HeroModelSource } from '@/ui/menu';
 import { AudioEngine } from '@/audio/audio';
 import { Director, type GameState } from './director';
+import { NpcDirector } from './npcs';
 import { HeroProp } from '@/world/heroProp';
 import { LEVEL } from '@/world/level';
 import { installDebug, isShotMode, urlParams } from '@/core/debug';
@@ -20,6 +21,7 @@ export class Game {
   hud = new HUD();
   audio = new AudioEngine();
   director: Director;
+  npcs: NpcDirector;
   menu: SettingsMenu;
   hero: HeroProp;
   freeCam = false;
@@ -39,6 +41,8 @@ export class Game {
       this.player.frozen = active;
       if (active) this.player.lookAt(world.shrine.altarTop.x, world.shrine.altarTop.y + 6, world.shrine.altarTop.z);
     });
+
+    this.npcs = new NpcDirector(ctx, world, this.audio, this.hud);
 
     this.hero = new HeroProp(ctx, assets, world.shrine.heroSlot);
     void this.hero.set({ kind: 'builtin', id: settings.get('heroModel') });
@@ -80,6 +84,7 @@ export class Game {
       this.audioStarted = true;
       await this.audio.unlock();
       this.director.startAudio();
+      this.npcs.startAudio();
     };
     if (!isShotMode) {
       this.input.requestLock();
@@ -115,7 +120,8 @@ export class Game {
     if (!this.freeCam) {
       this.player.update(dt);
       if (this.input.wasPressed('KeyE') && !this.menu.isOpen) {
-        if (!this.director.interact()) this.audio.playInteract('denied');
+        // stones first, then whoever is standing next to you
+        if (!this.director.interact() && !this.npcs.interact()) this.audio.playInteract('denied');
       }
       const d = this.world.collision.rayDistance(this.player.eyePosition, this.player.forward, 60);
       this.world.postfx.setFocus(d);
@@ -124,6 +130,8 @@ export class Game {
     const pos = this.freeCam ? this.world.camera.getPosition() : this.player.pos;
     const fwd = this.freeCam ? this.world.camera.forward : this.player.forward;
     this.director.update(dt, pos, this.freeCam ? pos : this.player.eyePosition, fwd);
+    this.npcs.update(dt, pos, this.director.activated, this.director.promptActive);
+    this.npcs.setAwakeness(this.director.activated / 3);
 
     this.world.update(dt, this.world.camera.getPosition());
     this.hero.update(dt);

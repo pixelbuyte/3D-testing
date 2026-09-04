@@ -1,6 +1,7 @@
 import type { Vec3 } from 'playcanvas';
 import { settings } from '@/core/settings';
 import { adsr, blip, impulseResponse, noiseBuffer, pick, rand, scaleNote } from './synth';
+import { SingingVoice } from './voice';
 
 export type Surface = 'ground' | 'stone' | 'water' | 'grass' | 'rock';
 export type Space = 'open' | 'courtyard' | 'sanctum';
@@ -322,6 +323,18 @@ export class AudioEngine {
       setIntensity: (v: number) => g.gain.setTargetAtTime(Math.max(0, v) * 0.16, ctx.currentTime, 0.4),
       dispose: () => { for (const o of oscs) { try { o.stop(); } catch { /* already stopped */ } } },
     };
+  }
+
+  /**
+   * Creates a spatialised singing voice for an NPC. Returns null when audio is unavailable, so
+   * callers can treat the singer as silent rather than branching everywhere.
+   */
+  createVoice(pos: Vec3, root = 196, level = 1): SingingVoice | null {
+    if (!this.ctx) return null;
+    const panner = this.panner(pos);
+    const voice = new SingingVoice(this.ctx, this.noise.pink!, { panner, root, level });
+    voice.start();
+    return voice;
   }
 
   /** Spatialised pool ambience: a soft filtered trickle. */

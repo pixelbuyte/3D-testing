@@ -208,3 +208,23 @@ export function softRectSprite(device: GraphicsDevice): import('playcanvas').Tex
   }
   return _softRect;
 }
+
+/** UV sphere (used for NPC heads / hoods). */
+export function sphereData(r: number, segs = 12, rings = 8, uvScale = 1): MeshData {
+  const out = emptyData();
+  for (let j = 0; j <= rings; j++) {
+    const v = j / rings, phi = v * Math.PI;
+    for (let i = 0; i <= segs; i++) {
+      const u = i / segs, theta = u * Math.PI * 2;
+      const x = Math.sin(phi) * Math.cos(theta), y = Math.cos(phi), z = Math.sin(phi) * Math.sin(theta);
+      out.positions.push(x * r, y * r, z * r);
+      out.normals.push(x, y, z);
+      out.uvs.push(u * uvScale, v * uvScale);
+    }
+  }
+  for (let j = 0; j < rings; j++) for (let i = 0; i < segs; i++) {
+    const a = j * (segs + 1) + i, b = a + segs + 1;
+    out.indices.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  return out;
+}
