@@ -206,6 +206,10 @@ sword held like a torch. Both are fixed structurally rather than pose by pose.
   the weapon, so both hands stay on the grip through every swing. Clips where the off hand should
   let go — a flourish, a fall, a stagger — say so.
 
+<p align="center">
+  <img src="docs/shots/player-skinned.jpg" width="98%" alt="The skinned player in the shrine: low sword carry, mid-slash with the trail, and running">
+</p>
+
 **The player is a skinned character.** The procedural bodies reached the point where cosmetic
 fixes stopped paying, so the player is now a real rigged humanoid: a 65-joint skeleton with
 weighted skin, fingers, knees, elbows and feet, built offline by `tools/build-character.py` from
