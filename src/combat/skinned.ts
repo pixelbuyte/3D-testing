@@ -347,7 +347,7 @@ export interface SocketTransform { pos: [number, number, number]; quat: [number,
  * blade has to lie across the hand's velocity with the edge leading, or the animation reads as a
  * thrust with a stick. `grip` is how far up the handle (katana-local Y) the fist closes.
  */
-export const KATANA_SOCKET: SocketTransform = { pos: [-0.031, 0.111, -0.005], quat: [0.19326, 0.09009, 0.28395, 0.93483], grip: 0.04 };
+export const KATANA_SOCKET: SocketTransform = { pos: [-0.031, 0.111, -0.005], quat: [0.19326, 0.09009, 0.28395, 0.93483], grip: 0.09 };
 
 export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResource): Fighter {
   const char = instantiateCharacter(container);
