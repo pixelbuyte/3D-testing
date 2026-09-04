@@ -9,3 +9,4 @@ demo/plates/
 demo/caps/
 demo/score.wav
 public/_dev/
+__pycache__/
