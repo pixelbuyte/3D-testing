@@ -70,8 +70,8 @@ export class MaterialLibrary {
     this.stoneBlocks = pbrMaterial(assets, 'sandstone_blocks_05', 'stone-blocks', { tiling: 0.55, tint: new Color(0.66, 0.68, 0.70), wet: 0.8 });
     this.stoneTiles = pbrMaterial(assets, 'stone_tiles_02', 'stone-tiles', { tiling: 0.9, tint: new Color(0.70, 0.73, 0.74), wet: 0.62, wetTop: 0.45 });
     this.stoneWall = pbrMaterial(assets, 'rustic_stone_wall_02', 'stone-wall', { tiling: 0.6, tint: new Color(0.66, 0.69, 0.71), wet: 0.75 });
-    this.wood = pbrMaterial(assets, 'weathered_planks', 'wood', { tiling: 0.8, tint: new Color(0.46, 0.42, 0.38), wet: 0.7 });
-    this.woodRed = pbrMaterial(assets, 'weathered_planks', 'wood-red', { tiling: 0.8, tint: new Color(0.44, 0.15, 0.12), wet: 0.72, bumpiness: 0.7 });
+    this.wood = pbrMaterial(assets, 'weathered_planks', 'wood', { tiling: 0.8, tint: new Color(0.58, 0.52, 0.45), wet: 0.30 });
+    this.woodRed = pbrMaterial(assets, 'weathered_planks', 'wood-red', { tiling: 0.8, tint: new Color(0.56, 0.21, 0.16), wet: 0.38, bumpiness: 0.7 });
     this.roof = pbrMaterial(assets, 'roof_slates_03', 'roof', { tiling: 1.2, tint: new Color(0.42, 0.46, 0.52), wet: 0.9, wetTop: 0.9 });
     this.lichen = pbrMaterial(assets, 'lichen_rock', 'lichen-rock', { tiling: 0.5, tint: new Color(0.68, 0.72, 0.70), wet: 0.75 });
     this.bark = pbrMaterial(assets, 'bark_willow_02', 'bark', { tiling: 0.9, tint: new Color(0.52, 0.50, 0.48), wet: 0.6, wetTop: 0.3 });

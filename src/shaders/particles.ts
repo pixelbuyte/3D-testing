@@ -57,7 +57,12 @@ void getAlbedo() { dAlbedo = vec3(0.0); }
 uniform float material_opacity;
 uniform float material_alphaDitherScale;
 void getOpacity() {
-    float shape = texture2DBias({STD_OPACITY_TEXTURE_NAME}, {STD_OPACITY_TEXTURE_UV}, textureBias).{STD_OPACITY_TEXTURE_CHANNEL};
+    // The falloff is computed from the quad's own UV rather than sampled: a 64px sprite covering
+    // ~10 screen pixels lands on a high mip and comes back flat, which turned every dust mote into
+    // an opaque square. An analytic 1-r^2 is smooth at any size and cheaper besides. The opacity
+    // map stays bound only so the engine still emits vUv0 for us.
+    vec2 q = {STD_OPACITY_TEXTURE_UV} * 2.0 - 1.0;
+    float shape = max(0.0, 1.0 - dot(q, q));
     dAlpha = pow(shape, uPartParams.x) * vPartColor.a * material_opacity;
 }
 `,
@@ -106,7 +111,9 @@ fn getAlbedo() { dAlbedo = vec3f(0.0); }
 uniform material_opacity: f32;
 uniform material_alphaDitherScale: f32;
 fn getOpacity() {
-    let shape = textureSampleBias({STD_OPACITY_TEXTURE_NAME}, {STD_OPACITY_TEXTURE_NAME}Sampler, {STD_OPACITY_TEXTURE_UV}, uniform.textureBias).{STD_OPACITY_TEXTURE_CHANNEL};
+    // see the GLSL note: analytic falloff, because the sprite's mips flatten at particle scale
+    let q = {STD_OPACITY_TEXTURE_UV} * 2.0 - 1.0;
+    let shape = max(0.0, 1.0 - dot(q, q));
     dAlpha = pow(shape, uniform.uPartParams.x) * vPartColor.a * uniform.material_opacity;
 }
 `,

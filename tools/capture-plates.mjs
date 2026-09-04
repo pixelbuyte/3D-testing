@@ -8,6 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const OUT = process.argv[2] ?? 'demo/plates';
+// `--only 17-kneel,05-lanterns` re-shoots just those plates; each one costs about a minute, so
+// iterating on a single framing should not mean re-rendering the whole set.
+const onlyArg = process.argv.indexOf('--only');
+const ONLY = onlyArg > -1 && process.argv[onlyArg + 1] ? new Set(process.argv[onlyArg + 1].split(',')) : null;
 fs.mkdirSync(OUT, { recursive: true });
 
 // name, [x, y, z, yaw, pitch], world state
@@ -25,6 +29,14 @@ const PLATES = [
   ['11-sanctum',   [0, 5.0, 24, 180, 4], 3],
   ['12-beamwide',  [0, 9.0, 22, 180, 4], 3],
   ['13-crane',     [0, 16.0, 8, 180, -14], 3],
+  // The people at the shrine. Camera heights are absolute: courtyard terrain runs 2.13-2.47 m and
+  // the sanctum platform floor is 6.65 m. These framings came out of a review pass that scored
+  // candidate angles on whether the figure reads as a person (target 15-30% of frame height),
+  // whether anything bisects the frame, and whether the lower-left stays clear for the narration.
+  ['14-tended',    [-12.8, 4.27, -6.4, 217, 0], 1],
+  ['15-nova',      [-1.8, 3.90, 1.6, 162, 0], 1],
+  ['16-watcher',   [-6.0, 4.15, -3.0, 107, -6], 1],
+  ['17-kneel',     [-2.6, 7.95, 42.2, 259, -2], 2],
 ];
 
 const browser = await chromium.launch({
@@ -46,7 +58,7 @@ await page.evaluate(() => {
 console.log(`loaded in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 
 let state = -1;
-for (const [name, cam, st] of PLATES) {
+for (const [name, cam, st] of PLATES.filter(([n]) => !ONLY || ONLY.has(n))) {
   if (st !== state) { await page.evaluate((n) => globalThis.__ECHOES.setState(n), st); state = st; }
   await page.evaluate((c) => globalThis.__ECHOES.setCamera(c[0], c[1], c[2], c[3], c[4]), cam);
   // let the doors/beam/lanterns settle into the requested state

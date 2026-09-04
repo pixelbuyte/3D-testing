@@ -18,14 +18,19 @@ interface SystemDef {
   size: [number, number];
   softness: number;
   emissive: number;
+  /** ceiling on the fade envelope, so alpha-blended systems stay translucent */
+  alpha: number;
 }
 
 const DEFS: Record<SystemName, SystemDef> = {
-  dust:   { count: 900, blend: BLEND_NORMAL,   color: new Color(0.58, 0.64, 0.76), size: [0.010, 0.032], softness: 2.2, emissive: 0.55 },
-  spores: { count: 260, blend: BLEND_ADDITIVE, color: new Color(0.42, 0.72, 0.66), size: [0.035, 0.10], softness: 2.6, emissive: 0.9 },
-  drips:  { count: 180, blend: BLEND_NORMAL,   color: new Color(0.60, 0.70, 0.84), size: [0.008, 0.020], softness: 1.4, emissive: 0.6 },
-  embers: { count: 320, blend: BLEND_ADDITIVE, color: new Color(1.00, 0.55, 0.20), size: [0.02, 0.07],  softness: 2.4, emissive: 3.0 },
-  energy: { count: 520, blend: BLEND_ADDITIVE, color: new Color(0.45, 0.95, 0.90), size: [0.03, 0.11],  softness: 2.4, emissive: 3.4 },
+  // `alpha` is a per-system ceiling on the fade envelope. The alpha-blended systems need it: a dust
+  // mote at full alpha paints a solid pale dot a few pixels across, which reads as a stuck white
+  // square rather than as floating dust. The additive systems can run hot because they only add.
+  dust:   { count: 900, blend: BLEND_NORMAL,   color: new Color(0.58, 0.64, 0.76), size: [0.010, 0.032], softness: 3.6, emissive: 0.55, alpha: 0.30 },
+  spores: { count: 260, blend: BLEND_ADDITIVE, color: new Color(0.42, 0.72, 0.66), size: [0.035, 0.10], softness: 3.0, emissive: 0.9, alpha: 0.75 },
+  drips:  { count: 180, blend: BLEND_NORMAL,   color: new Color(0.60, 0.70, 0.84), size: [0.008, 0.020], softness: 2.4, emissive: 0.6, alpha: 0.50 },
+  embers: { count: 320, blend: BLEND_ADDITIVE, color: new Color(1.00, 0.55, 0.20), size: [0.02, 0.07],  softness: 2.4, emissive: 3.0, alpha: 0.90 },
+  energy: { count: 520, blend: BLEND_ADDITIVE, color: new Color(0.45, 0.95, 0.90), size: [0.03, 0.11],  softness: 2.4, emissive: 3.4, alpha: 0.90 },
 };
 
 const FLOATS = 16; // one default-instancing "matrix" slot per particle
@@ -275,7 +280,7 @@ export class ParticleFX {
       }
 
       // --- fade envelope (in at birth, out at death)
-      let alpha = Math.min(age * 6, 1) * Math.min((1 - age) * 3.2, 1);
+      let alpha = Math.min(age * 6, 1) * Math.min((1 - age) * 3.2, 1) * DEFS[name].alpha;
       const flicker = 0.65 + 0.35 * Math.sin(t * (name === 'embers' ? 9 : 2.4) + seed * 30);
       alpha *= flicker;
       if (name === 'energy') alpha *= this.energyStrength;

@@ -1,27 +1,47 @@
 // Renders Nova's narration and the title cards as transparent PNG overlays.
 //
+// Nova is a character in the level, not just a voice-over: she stands at the head of the courtyard
+// and her singing is synthesised at runtime, so the narration speaks as her ("some of us stayed").
+//
 // This ffmpeg build has no drawtext filter, so the type is laid out in a headless browser instead —
 // which also means the trailer uses exactly the same fonts and treatment as the game's own HUD.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { timeline } from './trailer-shots.mjs';
 
 const OUT = process.argv[2] ?? 'demo/caps';
 const W = 1600, H = 900;
 fs.mkdirSync(OUT, { recursive: true });
 
-// a/b are fractions of the trailer's running time, so the cut can change length freely
+// Each line names the shot it belongs over, plus how far into that shot it appears and how long
+// before the cut it clears. Absolute seconds are derived from the shared shot table, so a caption
+// cannot drift onto the wrong shot when a length changes.
 const CAPS = [
-  { file: 'title.png', a: 0.010, b: 0.140, kind: 'title', line: 'ECHOES OF THE SHRINE', sub: 'a small cinematic game that runs in a browser' },
-  { file: 'c1.png', a: 0.160, b: 0.255, kind: 'line', line: 'It rained here for a hundred years.' },
-  { file: 'c2.png', a: 0.275, b: 0.375, kind: 'line', line: 'Then it stopped — and something started listening.' },
-  { file: 'c3.png', a: 0.400, b: 0.495, kind: 'line', line: 'Three stones sleep under the moss.' },
-  { file: 'c4.png', a: 0.515, b: 0.610, kind: 'line', line: 'Wake the first, and the lanterns remember fire.' },
-  { file: 'c5.png', a: 0.630, b: 0.720, kind: 'line', line: 'Wake the second, and the inner gate yields.' },
-  { file: 'c6.png', a: 0.740, b: 0.820, kind: 'line', line: 'Wake the third…' },
-  { file: 'c7.png', a: 0.830, b: 0.900, kind: 'line', line: '…and the shrine answers.' },
-  { file: 'card.png', a: 0.915, b: 0.995, kind: 'card', line: 'ECHOES OF THE SHRINE', sub: 'NARRATED BY NOVA', foot: 'PLAYCANVAS · WEBGPU-FIRST · WEBGL 2 FALLBACK' },
+  { file: 'title.png', over: '01-path.png', lead: 0.5, tail: -2.5, kind: 'title', line: 'ECHOES OF THE SHRINE', sub: 'a small cinematic game that runs in a browser' },
+  { file: 'c1.png', over: '03-gate.png', lead: 0.6, tail: -1.4, kind: 'line', line: 'It rained here for a hundred years.' },
+  { file: 'c2.png', over: '05-lanterns.png', lead: 0.4, tail: -1.4, kind: 'line', line: 'Then it stopped — and something started listening.' },
+  { file: 'c3.png', over: '14-tended.png', lead: 0.3, tail: 0.1, kind: 'line', line: 'Not everyone left when the lanterns went cold.' },
+  { file: 'c4.png', over: '15-nova.png', lead: 0.9, tail: 0.3, kind: 'line', line: 'Some of us stayed, and sang to the stones.' },
+  { file: 'c5.png', over: '16-watcher.png', lead: 0.1, tail: 0.7, kind: 'line', line: 'Some of us only wait.' },
+  { file: 'c6.png', over: '08-stone.png', lead: 0.4, tail: 0.2, kind: 'line', line: 'Three stones sleep under the moss.' },
+  { file: 'c7.png', over: '10-innergate.png', lead: -0.7, tail: 1.0, kind: 'line', line: 'Wake the first, and the lanterns remember fire.' },
+  { file: 'c8.png', over: '17-kneel.png', lead: 0.3, tail: 0.3, kind: 'line', line: 'Wake the second, and the gate yields.' },
+  { file: 'c9.png', over: '11-sanctum.png', lead: 1.0, tail: 0.2, kind: 'line', line: 'Wake the third…' },
+  { file: 'c10.png', over: '12-beamwide.png', lead: 0.9, tail: 0.3, kind: 'line', line: '…and the shrine answers.' },
+  { file: 'card.png', over: '13-crane.png', lead: 1.0, tail: 0.3, kind: 'card', line: 'ECHOES OF THE SHRINE', sub: 'NOVA — SUNG LIVE, NOT SAMPLED', foot: 'PLAYCANVAS · WEBGPU-FIRST · WEBGL 2 FALLBACK' },
 ];
+
+const TL = timeline();
+for (const c of CAPS) {
+  const shot = TL.find(c.over);
+  if (!shot) throw new Error(`caption ${c.file} names an unknown shot: ${c.over}`);
+  c.a = shot.start + c.lead;
+  c.b = shot.end - c.tail;
+  if (c.b <= c.a) throw new Error(`caption ${c.file} has a non-positive window on ${c.over}`);
+  // 0.6 s of that window is spent fading in and another 0.6 s fading out
+  if (c.b - c.a < 2.0) console.warn(`warning: ${c.file} is only ${(c.b - c.a).toFixed(1)}s on screen`);
+}
 
 const HTML = `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Inter:wght@300;400&display=swap" rel="stylesheet">
@@ -64,6 +84,7 @@ for (const c of CAPS) {
   await page.screenshot({ path: path.join(OUT, c.file), omitBackground: true });
   console.log(c.file);
 }
+// absolute seconds, consumed verbatim by build-trailer.mjs
 fs.writeFileSync(path.join(OUT, 'captions.json'), JSON.stringify(CAPS.map(({ file, a, b }) => ({ file, a, b })), null, 2));
 await browser.close();
 console.log(`wrote ${CAPS.length} caption overlays to ${OUT}`);

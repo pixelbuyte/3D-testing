@@ -108,7 +108,9 @@ public/assets/ packed runtime assets (textures, models, HDRI)
 - *Energy stones*: additive faceted glow with a Fresnel rim, drifting interior bands and an
   activation shockwave.
 - *Billboard particles*: `transformInstancingVS` is overridden to build a camera-facing basis
-  directly from the instance stream, so the CPU never writes full matrices.
+  directly from the instance stream, so the CPU never writes full matrices. The sprite falloff is
+  computed analytically from the quad's UV rather than sampled — a 64 px sprite covering ~10 screen
+  pixels lands on a high mip and comes back flat, which turned every dust mote into an opaque square.
 
 **Atmosphere**
 - Height + distance fog with sun in-scattering and drifting noise.
@@ -216,6 +218,11 @@ Entirely procedural Web Audio — no sound files ship with the game:
 - Frame rates in the shipped screenshots (~10 fps) are software-rasteriser numbers, not
   representative. Triangle load at High is roughly 5–11M submitted before culling; a real GPU should
   hold 60 fps, but this has not been measured on one.
+- The sky reads bluer than a true dusk. Raising `skyIntensity` was what stopped unlit verticals
+  (torii legs, banner posts, the sealed doors) from crushing to flat black, but in PlayCanvas that
+  one value scales both the image-based lighting and the visible sky dome, so the fix for the
+  shadow side also brightened the sky. Decoupling them means splitting the env-atlas contribution
+  from the skybox render rather than grading the whole frame down.
 - Particles use a distance fade rather than true soft-particle depth intersection.
 - Light shafts and mist are camera-anchored cards, not true volumetrics.
 - No Gaussian splats: no suitably-licensed capture of a shrine environment was available, and
@@ -251,23 +258,31 @@ All shaders, geometry, audio and code in `src/` are original.
 
 ## Demo trailer
 
-`demo/echoes-of-the-shrine.mp4` — a 39-second narrated trailer (1600×900, H.264 + AAC).
+`demo/echoes-of-the-shrine.mp4` — a 48-second narrated trailer (1600×900, H.264 + AAC).
 
-It is cut from real rendered frames of the game, with an on-screen narrator (**Nova**) and an
-original procedural score. Regenerate the whole thing with:
+It is cut from real rendered frames of the game, narrated by **Nova** — who is a character in the
+level, not just a voice-over — with an original procedural score. Four of the seventeen shots are
+there to establish that the shrine is still tended: the courtyard with figures at two depths, Nova
+herself, a watcher alone at the edge, and the figure kneeling before the altar. Regenerate the
+whole thing with:
 
 ```bash
-node tools/capture-plates.mjs demo/plates    # render the still plates from the running game (~15 min)
+node tools/capture-plates.mjs demo/plates    # render the still plates from the running game (~16 min)
 node tools/render-captions.mjs demo/caps     # Nova's narration as transparent PNG overlays
-node tools/make-soundtrack.mjs --seconds 40 --out demo/score.wav
+node tools/make-soundtrack.mjs --seconds 48.5 --out demo/score.wav
 node tools/build-trailer.mjs                 # Ken Burns + cross-dissolves + captions + score
 ```
 
+The cut itself lives in `tools/trailer-shots.mjs` and is shared by the last two steps, so a caption
+names the shot it sits over (`over: '15-nova.png'`) rather than a hand-computed fraction of the
+running time. Changing a shot's length re-times its narration automatically instead of silently
+sliding the line onto the wrong picture.
+
 **Why a montage rather than a real-time capture.** This environment has no GPU: the game runs on
 Chromium's SwiftShader software rasteriser, where a single frame of this scene costs 20–30 seconds.
-A 39-second capture at 24 fps would take over five hours, so `tools/capture-video.mjs` (which drives
+A 48-second capture at 24 fps would take over six hours, so `tools/capture-video.mjs` (which drives
 the camera by frame index and would produce a true flythrough) is included but impractical here.
-Instead `capture-plates.mjs` renders thirteen high-quality stills along the intended camera path and
+Instead `capture-plates.mjs` renders seventeen high-quality stills along the intended camera path and
 `build-trailer.mjs` cuts them together with slow moves. Every frame is genuine engine output —
 it is edited motion, not live gameplay footage. On a machine with a real GPU, run
 `tools/capture-video.mjs` for the flythrough version.

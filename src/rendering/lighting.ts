@@ -19,17 +19,17 @@ export const MOODS: Record<'dusk' | 'awakened' | 'opened' | 'finale', Mood> = {
   // A low sun rakes in from the north-east just above the ridge: the shrine is side/back lit,
   // shadows run long across the courtyard, and everything the sun misses sits in cold blue shade.
   dusk: {
-    sunColor: new Color(1.0, 0.76, 0.58), sunIntensity: 2.5, skyIntensity: 0.24, exposure: 0.72,
+    sunColor: new Color(1.0, 0.76, 0.58), sunIntensity: 2.5, skyIntensity: 0.44, exposure: 0.72,
     fogColor: new Color(0.125, 0.160, 0.215), fogSunColor: new Color(0.95, 0.52, 0.30), fogDensity: 0.0175, fogHeightFalloff: 0.085,
-    ambient: new Color(0.045, 0.065, 0.098),
+    ambient: new Color(0.062, 0.082, 0.120),
   },
   awakened: {
-    sunColor: new Color(1.0, 0.74, 0.56), sunIntensity: 2.3, skyIntensity: 0.24, exposure: 0.74,
+    sunColor: new Color(1.0, 0.74, 0.56), sunIntensity: 2.3, skyIntensity: 0.44, exposure: 0.74,
     fogColor: new Color(0.120, 0.160, 0.225), fogSunColor: new Color(0.95, 0.54, 0.32), fogDensity: 0.0170, fogHeightFalloff: 0.090,
-    ambient: new Color(0.048, 0.070, 0.105),
+    ambient: new Color(0.066, 0.088, 0.128),
   },
   opened: {
-    sunColor: new Color(1.0, 0.72, 0.55), sunIntensity: 2.0, skyIntensity: 0.23, exposure: 0.76,
+    sunColor: new Color(1.0, 0.72, 0.55), sunIntensity: 2.0, skyIntensity: 0.42, exposure: 0.76,
     fogColor: new Color(0.110, 0.155, 0.235), fogSunColor: new Color(0.90, 0.50, 0.34), fogDensity: 0.0165, fogHeightFalloff: 0.105,
     ambient: new Color(0.032, 0.053, 0.088),
   },

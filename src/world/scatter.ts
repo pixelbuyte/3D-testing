@@ -335,7 +335,9 @@ export class Scatter {
         [(cr() - 0.5) * 0.16, 0.025, (cr() - 0.5) * 0.16], [(cr() - 0.5) * 20, cr() * 180, (cr() - 0.5) * 20]));
     }
     const chipMesh = createMesh(dev, chipData);
-    const gravelMat = pbrMaterial(lib, 'rock_face_03', 'gravel', { tiling: 3.0, wet: 0.85, wetTop: 0.5 });
+    // untinted, these read as white confetti scattered over the ground: a chip is debris lying in
+    // dirt, so it wants to be darker than the paving it sits on, not brighter
+    const gravelMat = pbrMaterial(lib, 'rock_face_03', 'gravel', { tiling: 3.0, tint: new Color(0.55, 0.53, 0.50), wet: 0.85, wetTop: 0.5 });
     const gravel = this.sample(1100, 2, 62, (x, z, slope, built) => (slope > 0.5 ? 0 : 0.35 + this.pathDist(x, z) < 4 ? 0.9 : 0.35) * (built > 0.5 ? 0.9 : 0.5),
       { minScale: 0.5, maxScale: 1.7, alignSlope: 0.8, yOffset: -0.01 });
     this.addLayer('gravel', [{ mesh: chipMesh, material: gravelMat, pre: new Mat4() }], gravel, false, 24);
@@ -344,7 +346,7 @@ export class Scatter {
     const shardData = emptyData();
     appendData(shardData, transformData(boxData(0.26, 0.035, 0.19, 3), [0, 0.018, 0], [0, 0, 0]));
     const shardMesh = createMesh(dev, shardData);
-    const shardMat = pbrMaterial(lib, 'roof_slates_03', 'shards', { tiling: 2.2, tint: new Color(0.80, 0.82, 0.84), wet: 0.55, wetTop: 0.5 });
+    const shardMat = pbrMaterial(lib, 'roof_slates_03', 'shards', { tiling: 2.2, tint: new Color(0.52, 0.51, 0.51), wet: 0.70, wetTop: 0.5 });
     const ruin = LEVEL.terraces.ruin, sanct = LEVEL.terraces.sanctum, court = LEVEL.terraces.courtyard;
     const nearRuins = (x: number, z: number): number => {
       const d = Math.min(Math.hypot(x - ruin.x, z - ruin.z) / 14, Math.hypot(x - sanct.x, z - sanct.z) / 20, Math.hypot(x - court.x, z - court.z) / 22);

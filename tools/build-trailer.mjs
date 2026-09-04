@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SHOTS, XF, timeline } from './trailer-shots.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) =>
   a.startsWith('--') ? [a.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true] : []).filter(Boolean));
@@ -20,23 +21,7 @@ fs.rmSync(TMP, { recursive: true, force: true });
 fs.mkdirSync(TMP, { recursive: true });
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 
-// shot = plate file, seconds on screen, and the Ken Burns move (start/end zoom + pan direction)
-const SHOTS = [
-  ['01-path.png',      4.2, { z0: 1.00, z1: 1.10, dx: 0.0, dy: 0.0 }],
-  ['02-approach.png',  4.0, { z0: 1.09, z1: 1.00, dx: -0.2, dy: 0.0 }],
-  ['03-gate.png',      3.8, { z0: 1.00, z1: 1.11, dx: 0.0, dy: -0.1 }],
-  ['04-forest.png',    3.2, { z0: 1.10, z1: 1.00, dx: 0.25, dy: 0.0 }],
-  ['05-lanterns.png',  3.6, { z0: 1.00, z1: 1.10, dx: 0.1, dy: 0.0 }],
-  ['06-court.png',     3.8, { z0: 1.08, z1: 1.00, dx: -0.15, dy: 0.05 }],
-  ['07-pool.png',      2.4, { z0: 1.00, z1: 1.12, dx: 0.0, dy: 0.1 }],
-  ['08-stone.png',     3.4, { z0: 1.12, z1: 1.00, dx: 0.0, dy: 0.0 }],
-  ['09-ruin.png',      3.0, { z0: 1.00, z1: 1.10, dx: -0.2, dy: 0.0 }],
-  ['10-innergate.png', 3.6, { z0: 1.00, z1: 1.13, dx: 0.0, dy: -0.05 }],
-  ['11-sanctum.png',   3.6, { z0: 1.10, z1: 1.00, dx: 0.0, dy: 0.1 }],
-  ['12-beamwide.png',  4.0, { z0: 1.00, z1: 1.12, dx: 0.0, dy: 0.0 }],
-  ['13-crane.png',     5.0, { z0: 1.12, z1: 1.00, dx: 0.0, dy: 0.0 }],
-];
-const XF = 0.7; // cross-dissolve length
+
 
 const have = SHOTS.filter(([f]) => fs.existsSync(path.join(PLATES, f)));
 if (!have.length) { console.error(`no plates in ${PLATES}`); process.exit(1); }
@@ -73,7 +58,7 @@ for (let i = 1; i < clips.length; i++) {
   filter += `[${last}][${i}:v]xfade=transition=fade:duration=${XF}:offset=${offset.toFixed(3)}[${out}];`;
   last = out;
 }
-const totalDur = clips.reduce((a, c) => a + c.secs, 0) - XF * (clips.length - 1);
+const totalDur = timeline(have).total;   // same helper the captions were timed against
 filter += `[${last}]fade=t=in:st=0:d=1.0,fade=t=out:st=${(totalDur - 1.2).toFixed(2)}:d=1.2,format=yuv420p[v]`;
 const base = path.join(TMP, 'base.mp4');
 execFileSync(ffmpegPath, [...['-y'], ...inputs, '-filter_complex', filter, '-map', '[v]',
@@ -88,8 +73,8 @@ const parts = [];
 let vLabel = '0:v';
 
 if (fs.existsSync(capsMeta)) {
+  // captions.json carries absolute seconds, computed by render-captions.mjs from the same shot table
   const caps = JSON.parse(fs.readFileSync(capsMeta, 'utf8'))
-    .map((c) => ({ ...c, a: c.a * totalDur, b: c.b * totalDur }))
     .filter((c) => fs.existsSync(path.join(CAPS, c.file)));
   for (const c of caps) {
     cmd.push('-loop', '1', '-t', String(totalDur), '-i', path.join(CAPS, c.file));
