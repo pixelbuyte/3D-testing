@@ -168,16 +168,43 @@ enemies**. There are no levels, no loot, no skill trees — the effort went into
 </p>
 
 **The cast.** A katana warrior (you), a nunchuck ally who joins from the courtyard onward, and
-masked shadow warriors in three builds — grunt, blade, and one horned elite at the shrine. They are
-told apart by shape rather than colour: the warrior is broad-shouldered and vertical, the ally is
-narrow and diagonal with a trailing scarf, the enemies are hunched and ragged with a pale face plate
-that is the only bright thing on them.
+masked shadow warriors in three builds — grunt, blade, and one horned elite at the shrine. Each has
+one colour key so they read at a glance across a courtyard: the warrior is black with an indigo
+sash, a white streak in the hair and a saya on the hip; the ally is navy with cyan wraps, a topknot
+and a half-mask; the enemies are black with an orange sash and a pale face plate, under a hood or a
+conical kasa. Shape does the rest: the warrior is vertical and long-limbed, the ally narrower and
+more diagonal, the enemies heavier through the shoulders.
 
 **The rig.** Combat needs elbows and knees, which the ambient NPCs (which animate whole body parts)
 cannot do. Fighters use `src/combat/rig.ts`: a nineteen-joint hierarchy where geometry hangs off the
 joint it belongs to and animation is pure local rotation — no skinning, no bone weights. Everything
 a character puts on one joint in one material is merged into a single mesh at build time, so a
 fighter costs about a dozen draw calls rather than thirty.
+
+**The bodies.** The fighters are faceted on purpose. Every mesh is de-indexed at build time so each
+face gets its own normal (`flatShade` in `src/utils/geometry.ts`), which is what gives a low-poly
+figure crisp planes instead of the soft, blobby look of smooth-shaded primitives. Over the base body
+each character layers a collar, lapels, a sash and knot, shoulder plates, forearm wraps, trousers
+with cuffs and hanging coat panels, so the silhouette has the breaks a real outfit has. Materials
+(`src/combat/materials.ts`) are PBR with generated micro-detail: cloth gets a tiled twill with a
+derived normal map and low gloss, leather a broken grain with higher gloss, and everything carries a
+fresnel rim so a black figure separates from dark wet stone instead of dissolving into it. The blade
+is a deliberately less-metallic steel with a touch of self-light, because a true mirror finish
+reflects the dusk sky and reads as a black rod.
+
+**Feet and hands.** Two things sold the first fighters as stand-ins: sliding, floating feet and a
+sword held like a torch. Both are fixed structurally rather than pose by pose.
+
+- A clip's foot pitch is an *offset from ground-parallel*: the animator subtracts the hip, thigh and
+  shin pitch each frame, so a planted foot stays flat however deep the stance, and a push-off foot
+  authored at +20 lifts its heel by exactly that.
+- After the pose is applied, the actor measures the lowest sole against the ground and drops the
+  pelvis to meet it (damped and clamped), which puts both soles on the flagstones in a lunge or a
+  wide guard without authoring it per clip. Airborne and prone clips opt out.
+- The katana hangs off the right hand with a fixed grip transform. The left hand is then solved onto
+  the hilt every frame with a two-bone analytic IK (`src/combat/ik.ts`) and its rotation matched to
+  the weapon, so both hands stay on the grip through every swing. Clips where the off hand should
+  let go — a flourish, a fall, a stagger — say so.
 
 **The animation.** Poses are hand-authored keyframes (`src/combat/clips.ts`) evaluated by a small
 animator that exists mainly to avoid the two things that make procedural characters look robotic:

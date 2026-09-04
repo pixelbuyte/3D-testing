@@ -118,6 +118,39 @@ export function createMesh(device: GraphicsDevice, data: MeshData): Mesh {
   return mesh;
 }
 
+/**
+ * De-index a mesh and give every triangle its own face normal.
+ *
+ * Smooth-shaded low-segment cylinders and spheres read as balloons; the same geometry with hard
+ * facets reads as carved, stylised form — which is the whole difference between a placeholder
+ * character and one that belongs in the scene. Vertex count triples, which on a ~2k-triangle
+ * fighter is nothing.
+ */
+export function flatShade(data: MeshData): MeshData {
+  const out = emptyData();
+  const P = data.positions, U = data.uvs, I = data.indices;
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2];
+    const ax = P[a * 3], ay = P[a * 3 + 1], az = P[a * 3 + 2];
+    const bx = P[b * 3], by = P[b * 3 + 1], bz = P[b * 3 + 2];
+    const cx = P[c * 3], cy = P[c * 3 + 1], cz = P[c * 3 + 2];
+    // face normal from the two edges
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    const base = out.positions.length / 3;
+    for (const i of [a, b, c]) {
+      out.positions.push(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+      out.normals.push(nx, ny, nz);
+      out.uvs.push(U[i * 2] ?? 0, U[i * 2 + 1] ?? 0);
+    }
+    out.indices.push(base, base + 1, base + 2);
+  }
+  return out;
+}
+
 /** Elongated crystal (two cones joined) for the energy stones. */
 export function crystalData(r: number, h: number, sides = 6): MeshData {
   const out = emptyData();

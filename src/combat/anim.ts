@@ -43,6 +43,10 @@ export interface Clip {
   events?: { t: number; name: string }[];
   /** root motion: metres forward over the clip, applied as a velocity curve */
   lunge?: number;
+  /** false for airborne or prone clips, where snapping the feet to the ground is wrong */
+  ground?: boolean;
+  /** true when the off-hand leaves the weapon (a flourish, a fall), so the grip IK lets go */
+  offHandFree?: boolean;
 }
 
 const ZERO: readonly [number, number, number] = [0, 0, 0];
@@ -113,6 +117,15 @@ export class Animator {
   /** 0..1 through the current action, or 1 when idle */
   get actionProgress(): number { return this.action ? this.actionT / this.action.dur : 1; }
   get busy(): boolean { return this.action !== null; }
+  /** whether the feet should be pinned to the ground this frame */
+  get grounded(): boolean { return this.action?.ground !== false; }
+  /** whether the off-hand should be solved onto the weapon this frame */
+  get offHandOnWeapon(): boolean {
+    if (this.action) return !this.action.offHandFree;
+    // no action: the dominant locomotion clip decides, so a sprint carries the blade one-handed
+    const loco = this.locoB && this.locoMix >= 0.5 ? this.locoB : this.locoA;
+    return !loco?.offHandFree;
+  }
 
   /** Forward root motion the current action wants this frame, in metres. */
   consumeLunge(dt: number): number {
@@ -182,7 +195,15 @@ export class Animator {
     this.cur.head[1] += this.lookYaw;
     this.cur.head[0] += this.lookPitch;
 
-    // --- 4. write to the skeleton, on top of each joint's rest rotation
+    // --- 4. level the feet. A clip's foot pitch is an OFFSET from "sole parallel to the ground",
+    //     so the leg chain can crouch, lunge or stride without the feet tipping with it — the
+    //     planted foot stays flat, and a push-off foot authored at +20 lifts its heel by 20.
+    for (const side of ['L', 'R'] as const) {
+      const f = this.cur[`foot${side}`];
+      f[0] = -(this.cur.hips[0] + this.cur[`thigh${side}`][0] + this.cur[`shin${side}`][0]) + f[0];
+    }
+
+    // --- 5. write to the skeleton, on top of each joint's rest rotation
     const rest = this.rig.rest;
     for (const j of JOINTS) {
       const c = this.cur[j];

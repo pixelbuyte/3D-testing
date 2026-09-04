@@ -1,6 +1,9 @@
 import { Color, Entity, MeshInstance, StandardMaterial, Vec3 } from 'playcanvas';
 import type { EngineContext } from '@/core/engine';
-import { appendData, createMesh, cylinderData, emptyData, sphereData, transformData, type MeshData } from '@/utils/geometry';
+import {
+  appendData, boxData, createMesh, cylinderData, emptyData, flatShade, sphereData, transformData, type MeshData,
+} from '@/utils/geometry';
+import { characterMaterial, type CharacterMaterialOpts } from './materials';
 
 /**
  * A jointed humanoid skeleton.
@@ -11,6 +14,10 @@ import { appendData, createMesh, cylinderData, emptyData, sphereData, transformD
  * hangs off the joint it belongs to, and animation is pure local rotation. No skinning, no bone
  * weights — at these silhouette sizes an articulated chain of solids reads the same and costs a
  * fraction of the setup.
+ *
+ * Every mesh is flat-shaded at build time. Smooth-shaded low-segment cylinders read as balloons;
+ * the same geometry with hard facets reads as carved, stylised form, and that is most of the
+ * distance between a placeholder and a character.
  */
 export const JOINTS = [
   'hips', 'spine', 'chest', 'neck', 'head',
@@ -32,48 +39,58 @@ export const UPPER: readonly Joint[] = [
   'clavR', 'upperArmR', 'forearmR', 'handR',
 ];
 
+/** Limb lengths in metres at scale 1 — the IK solver and the grounding pass both need them. */
+export const UPPER_ARM = 0.27;
+export const FOREARM = 0.25;
+export const THIGH = 0.43;
+export const SHIN = 0.41;
+/** distance from the ankle joint down to the sole */
+export const SOLE = 0.085;
+export const HIPS_Y = 0.94;
+
 /**
  * Where each joint sits relative to its parent, and the rest rotation it holds.
  * Scaled by the character's height multiplier at build time.
  */
 const SKELETON: Record<Joint, { parent: Joint | null; pos: readonly [number, number, number]; rest?: readonly [number, number, number] }> = {
-  hips:      { parent: null,    pos: [0, 0.94, 0] },
+  hips:      { parent: null,    pos: [0, HIPS_Y, 0] },
   spine:     { parent: 'hips',  pos: [0, 0.15, 0] },
   chest:     { parent: 'spine', pos: [0, 0.20, 0] },
   neck:      { parent: 'chest', pos: [0, 0.19, 0] },
   head:      { parent: 'neck',  pos: [0, 0.10, 0] },
 
-  // arms hang down: the rest pose rolls them outward slightly so they clear the ribcage
-  clavL:     { parent: 'chest', pos: [-0.06, 0.145, 0] },
-  upperArmL: { parent: 'clavL', pos: [-0.13, 0, 0], rest: [0, 0, -6] },
-  forearmL:  { parent: 'upperArmL', pos: [0, -0.27, 0] },
-  handL:     { parent: 'forearmL', pos: [0, -0.25, 0] },
+  // shoulders sit a little wider than the ribcage; the rest pose rolls the arms out to clear it
+  clavL:     { parent: 'chest', pos: [-0.07, 0.145, 0] },
+  upperArmL: { parent: 'clavL', pos: [-0.135, 0, 0], rest: [0, 0, -7] },
+  forearmL:  { parent: 'upperArmL', pos: [0, -UPPER_ARM, 0] },
+  handL:     { parent: 'forearmL', pos: [0, -FOREARM, 0] },
 
-  clavR:     { parent: 'chest', pos: [0.06, 0.145, 0] },
-  upperArmR: { parent: 'clavR', pos: [0.13, 0, 0], rest: [0, 0, 6] },
-  forearmR:  { parent: 'upperArmR', pos: [0, -0.27, 0] },
-  handR:     { parent: 'forearmR', pos: [0, -0.25, 0] },
+  clavR:     { parent: 'chest', pos: [0.07, 0.145, 0] },
+  upperArmR: { parent: 'clavR', pos: [0.135, 0, 0], rest: [0, 0, 7] },
+  forearmR:  { parent: 'upperArmR', pos: [0, -UPPER_ARM, 0] },
+  handR:     { parent: 'forearmR', pos: [0, -FOREARM, 0] },
 
-  thighL:    { parent: 'hips', pos: [-0.10, -0.05, 0] },
-  shinL:     { parent: 'thighL', pos: [0, -0.43, 0] },
-  footL:     { parent: 'shinL', pos: [0, -0.41, 0] },
+  thighL:    { parent: 'hips', pos: [-0.105, -0.05, 0] },
+  shinL:     { parent: 'thighL', pos: [0, -THIGH, 0] },
+  footL:     { parent: 'shinL', pos: [0, -SHIN, 0] },
 
-  thighR:    { parent: 'hips', pos: [0.10, -0.05, 0] },
-  shinR:     { parent: 'thighR', pos: [0, -0.43, 0] },
-  footR:     { parent: 'shinR', pos: [0, -0.41, 0] },
+  thighR:    { parent: 'hips', pos: [0.105, -0.05, 0] },
+  shinR:     { parent: 'thighR', pos: [0, -THIGH, 0] },
+  footR:     { parent: 'shinR', pos: [0, -SHIN, 0] },
 };
 
 export interface RigPalette {
-  cloth: Color;      // robe / hakama
-  armor: Color;      // plates, bracers, belt
+  cloth: Color;      // main garment
+  cloth2: Color;     // trousers / under-layer
+  leather: Color;    // boots, belts, wraps, grips
   skin: Color;
   hair: Color;
-  accent: Color;     // sash, glowing trim
+  accent: Color;     // sash, trim
   accentGlow?: number;
 }
 
-/** A limb solid: a tapered cylinder from the joint down toward its child. */
-function limb(rTop: number, rBot: number, len: number, segs = 8): MeshData {
+/** A limb solid: a tapered prism from the joint down toward its child. */
+function limb(rTop: number, rBot: number, len: number, segs = 7): MeshData {
   return transformData(cylinderData(rBot, rTop, len, segs, 1, true), [0, -len * 0.5, 0]);
 }
 
@@ -82,31 +99,24 @@ export class Rig {
   readonly joints = {} as Record<Joint, Entity>;
   readonly scale: number;
   /** materials are exposed so characters can flash them on hit or dissolve them on defeat */
-  readonly mats: { cloth: StandardMaterial; armor: StandardMaterial; skin: StandardMaterial; hair: StandardMaterial; accent: StandardMaterial };
+  readonly mats: Record<'cloth' | 'cloth2' | 'leather' | 'skin' | 'hair' | 'accent', StandardMaterial>;
   private restPose: Pose = {};
   private pending = new Map<Joint, Map<StandardMaterial, MeshData>>();
+  private extraMats: StandardMaterial[] = [];
 
   constructor(private ctx: EngineContext, name: string, palette: RigPalette, scale = 1) {
     this.scale = scale;
     this.root = new Entity(name);
 
-    const mk = (n: string, c: Color, gloss: number, glow = 0): StandardMaterial => {
-      const m = new StandardMaterial();
-      m.name = `${name}-${n}`;
-      m.diffuse = c.clone();
-      m.useMetalness = true;
-      m.metalness = n === 'armor' ? 0.55 : 0;
-      m.gloss = gloss;
-      if (glow > 0) { m.emissive = c.clone(); m.emissiveIntensity = glow; }
-      m.update();
-      return m;
-    };
+    const mk = (n: string, c: Color, o: CharacterMaterialOpts): StandardMaterial =>
+      characterMaterial(ctx, `${name}-${n}`, c, o);
     this.mats = {
-      cloth: mk('cloth', palette.cloth, 0.20),
-      armor: mk('armor', palette.armor, 0.55),
-      skin: mk('skin', palette.skin, 0.26),
-      hair: mk('hair', palette.hair, 0.34),
-      accent: mk('accent', palette.accent, 0.40, palette.accentGlow ?? 0),
+      cloth:   mk('cloth', palette.cloth, { kind: 'cloth' }),
+      cloth2:  mk('cloth2', palette.cloth2, { kind: 'cloth' }),
+      leather: mk('leather', palette.leather, { kind: 'leather' }),
+      skin:    mk('skin', palette.skin, { kind: 'skin' }),
+      hair:    mk('hair', palette.hair, { kind: 'hair' }),
+      accent:  mk('accent', palette.accent, { kind: 'cloth', glow: palette.accentGlow ?? 0 }),
     };
 
     // --- build the joint hierarchy
@@ -126,6 +136,13 @@ export class Rig {
   /** The rotation a joint returns to when no clip is driving it. */
   get rest(): Pose { return this.restPose; }
 
+  /** An extra material owned by this rig (a hair streak, a blade), so characters need no bookkeeping. */
+  material(name: string, c: Color, o: CharacterMaterialOpts): StandardMaterial {
+    const m = characterMaterial(this.ctx, `${this.root.name}-${name}`, c, o);
+    this.extraMats.push(m);
+    return m;
+  }
+
   /**
    * Queue a mesh onto a joint, in that joint's local space.
    *
@@ -142,17 +159,17 @@ export class Rig {
     else byMat.set(mat, data);
   }
 
-  /** Realise every queued mesh. Characters call this once, after dressing the rig. */
+  /** Realise every queued mesh, flat-shaded. Characters call this once, after dressing the rig. */
   build(): void {
     for (const [joint, byMat] of this.pending) {
       for (const [mat, data] of byMat) {
-        this.attachTo(this.joints[joint], data, mat, `${joint}-${mat.name}`);
+        this.attachTo(this.joints[joint], flatShade(data), mat, `${joint}-${mat.name}`);
       }
     }
     this.pending.clear();
   }
 
-  /** Same, but onto any entity in the hierarchy — used for weapon holders. */
+  /** Attach immediately onto any entity in the hierarchy — used for weapon holders. */
   attachTo(parent: Entity, data: MeshData, mat: StandardMaterial, name = 'geo'): MeshInstance {
     const mi = new MeshInstance(createMesh(this.ctx.device, data), mat);
     const e = new Entity(name);
@@ -162,82 +179,96 @@ export class Rig {
   }
 
   /**
-   * The default body: torso, head, arms and legs as tapered solids. Characters call this and then
-   * add their own silhouette pieces (armour plates, a skirt, a mask) on top.
+   * The default body. Characters call this and then add their own silhouette pieces on top.
+   *
+   * Proportions lean slightly heroic — a touch more shoulder and leg than life — because at the
+   * distance the camera sits, true-to-life proportions read as short and soft.
    */
-  buildBody(o: { chest?: number; limbs?: number; skirt?: number; skirtAccent?: boolean } = {}): void {
+  buildBody(o: { chest?: number; limbs?: number } = {}): void {
     const s = this.scale;
     const bulk = o.limbs ?? 1;
     const M = this.mats;
-
-    // --- pelvis + torso
-    const hips = emptyData();
-    appendData(hips, transformData(cylinderData(0.155 * s, 0.145 * s, 0.20 * s, 10, 1, true), [0, 0.02 * s, 0], [0, 0, 0], [1, 1, 0.78]));
-    this.attach('hips', hips, M.cloth);
-
     const chestW = o.chest ?? 1;
+
+    // --- pelvis + torso: an eight-sided core, wider than deep
+    const hips = emptyData();
+    appendData(hips, transformData(cylinderData(0.150 * s, 0.140 * s, 0.20 * s, 8, 1, true), [0, 0.02 * s, 0], [0, 0, 0], [1, 1, 0.72]));
+    this.attach('hips', hips, M.cloth2);
+
     const spine = emptyData();
-    appendData(spine, transformData(cylinderData(0.145 * s, 0.165 * s * chestW, 0.22 * s, 10, 1, true), [0, 0.10 * s, 0], [0, 0, 0], [1, 1, 0.72]));
+    appendData(spine, transformData(cylinderData(0.140 * s, 0.160 * s * chestW, 0.22 * s, 8, 1, true), [0, 0.10 * s, 0], [0, 0, 0], [1, 1, 0.68]));
     this.attach('spine', spine, M.cloth);
 
     const chest = emptyData();
-    // ribcage tapering up into the shoulders, then the shoulder yoke across the top
-    appendData(chest, transformData(cylinderData(0.165 * s * chestW, 0.150 * s * chestW, 0.20 * s, 10, 1, true), [0, 0.09 * s, 0], [0, 0, 0], [1, 1, 0.70]));
-    appendData(chest, transformData(cylinderData(0.075 * s, 0.075 * s, 0.30 * s * chestW, 8, 1, true), [0, 0.145 * s, 0], [0, 0, 90], [1, 1, 0.8]));
+    // ribcage into the shoulders, then a yoke across the top that gives the trapezius line
+    appendData(chest, transformData(cylinderData(0.160 * s * chestW, 0.135 * s * chestW, 0.20 * s, 8, 1, true), [0, 0.09 * s, 0], [0, 0, 0], [1, 1, 0.66]));
+    appendData(chest, transformData(cylinderData(0.070 * s, 0.070 * s, 0.34 * s * chestW, 6, 1, true), [0, 0.15 * s, 0], [0, 0, 90], [1, 1, 0.75]));
     this.attach('chest', chest, M.cloth);
 
     const neck = emptyData();
-    appendData(neck, transformData(cylinderData(0.055 * s, 0.050 * s, 0.12 * s, 8, 1, true), [0, 0.05 * s, 0]));
+    appendData(neck, transformData(cylinderData(0.052 * s, 0.048 * s, 0.12 * s, 6, 1, true), [0, 0.05 * s, 0]));
     this.attach('neck', neck, M.skin);
 
+    // head: a squared-off skull, jaw slightly narrower than the crown
     const head = emptyData();
-    appendData(head, transformData(sphereData(0.105 * s, 12, 9), [0, 0.05 * s, 0], [0, 0, 0], [0.90, 1.14, 0.96]));
+    appendData(head, transformData(sphereData(0.105 * s, 8, 6), [0, 0.055 * s, 0.005 * s], [0, 0, 0], [0.88, 1.16, 0.94]));
     this.attach('head', head, M.skin);
 
     // --- arms
     for (const side of ['L', 'R'] as const) {
       const upper = emptyData();
-      appendData(upper, transformData(sphereData(0.062 * s * bulk, 8, 6), [0, 0, 0]));            // shoulder ball
-      appendData(upper, limb(0.058 * s * bulk, 0.048 * s * bulk, 0.27 * s));
+      appendData(upper, transformData(sphereData(0.064 * s * bulk, 7, 5), [0, 0, 0]));           // shoulder ball
+      appendData(upper, limb(0.060 * s * bulk, 0.050 * s * bulk, UPPER_ARM * s));
       this.attach(`upperArm${side}` as Joint, upper, M.cloth);
 
       const fore = emptyData();
-      appendData(fore, limb(0.048 * s * bulk, 0.038 * s * bulk, 0.25 * s));
+      appendData(fore, limb(0.050 * s * bulk, 0.040 * s * bulk, FOREARM * s));
       this.attach(`forearm${side}` as Joint, fore, M.skin);
 
+      // a closed fist: palm block with a knuckle ridge and a thumb, hollow enough to wrap a grip.
+      // Local -Y continues the forearm; the grip axis runs through the fist along local Z.
       const hand = emptyData();
-      appendData(hand, transformData(sphereData(0.046 * s, 7, 5), [0, -0.045 * s, 0], [0, 0, 0], [1, 1.25, 0.8]));
+      appendData(hand, transformData(boxData(0.074 * s, 0.078 * s, 0.062 * s), [0, -0.045 * s, 0.004 * s], [0, 0, 0]));
+      appendData(hand, transformData(boxData(0.070 * s, 0.032 * s, 0.028 * s), [0, -0.086 * s, 0.026 * s], [18, 0, 0]));  // curled fingers
+      appendData(hand, transformData(boxData(0.024 * s, 0.040 * s, 0.026 * s), [(side === 'L' ? 1 : -1) * 0.040 * s, -0.036 * s, 0.028 * s], [0, 0, 0])); // thumb
       this.attach(`hand${side}` as Joint, hand, M.skin);
     }
 
     // --- legs
     for (const side of ['L', 'R'] as const) {
       const thigh = emptyData();
-      appendData(thigh, transformData(sphereData(0.082 * s * bulk, 8, 6), [0, 0, 0]));
-      appendData(thigh, limb(0.080 * s * bulk, 0.062 * s * bulk, 0.43 * s));
-      this.attach(`thigh${side}` as Joint, thigh, M.cloth);
+      appendData(thigh, transformData(sphereData(0.090 * s * bulk, 7, 5), [0, 0, 0]));
+      appendData(thigh, limb(0.090 * s * bulk, 0.070 * s * bulk, THIGH * s));
+      this.attach(`thigh${side}` as Joint, thigh, M.cloth2);
 
       const shin = emptyData();
-      appendData(shin, limb(0.060 * s * bulk, 0.044 * s * bulk, 0.41 * s));
-      this.attach(`shin${side}` as Joint, shin, M.cloth);
+      appendData(shin, limb(0.068 * s * bulk, 0.050 * s * bulk, SHIN * s));
+      this.attach(`shin${side}` as Joint, shin, M.cloth2);
 
+      // a boot: ankle cuff, a foot that actually points forward, and a sole the grounding pass
+      // can measure to. The toe sits 0.17 m ahead of the ankle so the foot has a direction.
       const foot = emptyData();
-      appendData(foot, transformData(cylinderData(0.062 * s, 0.050 * s, 0.20 * s, 6, 1, true), [0, -0.025 * s, 0.045 * s], [90, 0, 0], [1, 1, 0.6]));
-      this.attach(`foot${side}` as Joint, foot, M.armor);
+      appendData(foot, transformData(cylinderData(0.058 * s, 0.054 * s, 0.10 * s, 7, 1, true), [0, -0.03 * s, 0]));
+      appendData(foot, transformData(boxData(0.086 * s, 0.062 * s, 0.24 * s), [0, -(SOLE - 0.031) * s, 0.055 * s]));
+      appendData(foot, transformData(boxData(0.070 * s, 0.040 * s, 0.07 * s), [0, -(SOLE - 0.020) * s, 0.16 * s], [-8, 0, 0])); // toe cap
+      this.attach(`foot${side}` as Joint, foot, M.leather);
     }
+  }
 
-    // --- a short split skirt hanging off the hips reads as cloth without needing simulation
-    const skirt = o.skirt ?? 0;
-    if (skirt > 0) {
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + 0.3;
-        const panel = emptyData();
-        appendData(panel, transformData(
-          cylinderData(0.075 * s, 0.055 * s, skirt * s, 4, 1, false),
-          [Math.cos(a) * 0.135 * s, -skirt * 0.5 * s - 0.04 * s, Math.sin(a) * 0.105 * s],
-          [Math.cos(a) * 7, -a / Math.PI * 180, Math.sin(a) * 7], [1.5, 1, 0.6]));
-        this.attach('hips', panel, o.skirtAccent && i % 2 === 1 ? this.mats.accent : this.mats.cloth);
-      }
+  /**
+   * Hanging cloth panels — a split skirt, coat tails, a tabard. Flat planks rather than cylinder
+   * segments, which is what makes them read as cloth with a hem rather than as a lampshade.
+   */
+  panels(joint: Joint, mat: StandardMaterial, spec: { angles: number[]; width: number; length: number; radius: number; drop?: number; flare?: number; }): void {
+    const s = this.scale;
+    for (const deg of spec.angles) {
+      const a = deg * Math.PI / 180;
+      const d = emptyData();
+      appendData(d, transformData(
+        boxData(spec.width * s, spec.length * s, 0.012 * s),
+        [Math.sin(a) * spec.radius * s, (-(spec.length * 0.5) - (spec.drop ?? 0.04)) * s, Math.cos(a) * spec.radius * s * 0.85],
+        [Math.cos(a) * (spec.flare ?? 6), deg, -Math.sin(a) * (spec.flare ?? 6)]));
+      this.attach(joint, d, mat);
     }
   }
 

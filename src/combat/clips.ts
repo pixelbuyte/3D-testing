@@ -16,99 +16,105 @@ import type { Clip } from './anim';
 
 // ---------------------------------------------------------------- locomotion
 
-/** Relaxed travelling stance, sword shouldered. */
+/**
+ * Relaxed carry: blade low and forward in the right hand, off-hand free, weight easy.
+ * The off-hand is released here so the IK doesn't drag the left arm across the body.
+ */
 export const IDLE: Clip = {
-  name: 'idle', dur: 4.0, loop: true, mask: 'full',
+  name: 'idle', dur: 4.0, loop: true, mask: 'full', offHandFree: true,
   keys: [
     { t: 0, ease: 'inOut', pose: {
-      hips: [0, -14, 0], spine: [-3, 5, 1], chest: [-2, 7, 0], head: [3, -9, 0],
-      thighL: [10, 10, -2], shinL: [-14, 0, 0], footL: [5, 0, 0],
-      thighR: [-8, -8, 2], shinR: [-20, 0, 0], footR: [9, 0, 0],
-      upperArmR: [40, 6, -10], forearmR: [72, 0, 0], handR: [0, 0, -10],
-      upperArmL: [44, -8, 26], forearmL: [80, 0, 0], handL: [0, 0, 12],
+      hips: [0, -10, 0], spine: [-2, 4, 1], chest: [-1, 6, 0], head: [2, -7, 0],
+      thighL: [8, 8, -3], shinL: [-12, 0, 0], footL: [0, -8, 0],
+      thighR: [-6, -7, 3], shinR: [-14, 0, 0], footR: [0, 12, 0],
+      upperArmR: [12, 6, -6], forearmR: [10, 0, 0], handR: [-24, 0, -8],
+      upperArmL: [4, 0, -4], forearmL: [26, 0, 0], handL: [0, 0, 4],
     } },
     { t: 0.5, ease: 'inOut', pose: {
-      hips: [0, -14, 0], spine: [-4, 5, 1], chest: [-1, 7, 0], head: [1, -6, 0],
-      thighL: [11, 10, -2], shinL: [-15, 0, 0], footL: [5, 0, 0],
-      thighR: [-9, -8, 2], shinR: [-21, 0, 0], footR: [9, 0, 0],
-      upperArmR: [37, 6, -12], forearmR: [70, 0, 0], handR: [0, 0, -10],
-      upperArmL: [41, -8, 28], forearmL: [78, 0, 0], handL: [0, 0, 12],
+      hips: [0, -10, 0], spine: [-3, 4, 1], chest: [0, 6, 0], head: [0, -4, 0],
+      thighL: [9, 8, -3], shinL: [-13, 0, 0], footL: [0, -8, 0],
+      thighR: [-7, -7, 3], shinR: [-15, 0, 0], footR: [0, 12, 0],
+      upperArmR: [11, 6, -7], forearmR: [12, 0, 0], handR: [-26, 0, -8],
+      upperArmL: [5, 0, -5], forearmL: [28, 0, 0], handL: [0, 0, 4],
     } },
     { t: 1, ease: 'inOut', pose: {
-      hips: [0, -14, 0], spine: [-3, 5, 1], chest: [-2, 7, 0], head: [3, -9, 0],
-      thighL: [10, 10, -2], shinL: [-14, 0, 0], footL: [5, 0, 0],
-      thighR: [-8, -8, 2], shinR: [-20, 0, 0], footR: [9, 0, 0],
-      upperArmR: [40, 6, -10], forearmR: [72, 0, 0], handR: [0, 0, -10],
-      upperArmL: [44, -8, 26], forearmL: [80, 0, 0], handL: [0, 0, 12],
+      hips: [0, -10, 0], spine: [-2, 4, 1], chest: [-1, 6, 0], head: [2, -7, 0],
+      thighL: [8, 8, -3], shinL: [-12, 0, 0], footL: [0, -8, 0],
+      thighR: [-6, -7, 3], shinR: [-14, 0, 0], footR: [0, 12, 0],
+      upperArmR: [12, 6, -6], forearmR: [10, 0, 0], handR: [-24, 0, -8],
+      upperArmL: [4, 0, -4], forearmL: [26, 0, 0], handL: [0, 0, 4],
     } },
   ],
 };
 
-/** Weight low, blade up: the stance you hold when something is coming at you. */
+/**
+ * Chudan: weight low, blade forward at chest height, both hands on the tsuka (the left is solved
+ * onto the grip by IK). The stance you hold when something is coming at you.
+ */
 export const GUARD: Clip = {
   name: 'guard', dur: 2.6, loop: true, mask: 'full',
   keys: [
     { t: 0, ease: 'inOut', pose: {
-      hips: [0, -26, 0], spine: [-7, 10, 2], chest: [-4, 12, 0], head: [4, -16, 0],
-      thighL: [20, 14, -4], shinL: [-30, 0, 0], footL: [12, 0, 0],
-      thighR: [-14, -12, 4], shinR: [-34, 0, 0], footR: [16, 0, 0],
-      upperArmR: [58, 10, -18], forearmR: [88, 0, 0], handR: [0, 0, -14],
-      upperArmL: [62, -12, 34], forearmL: [96, 0, 0], handL: [0, 0, 16],
+      hips: [0, -30, 0], spine: [-8, 12, 2], chest: [-4, 14, 0], head: [3, -20, 0],
+      thighL: [24, 16, -5], shinL: [-34, 0, 0], footL: [0, -14, 0],
+      thighR: [-16, -14, 5], shinR: [-38, 0, 0], footR: [0, 16, 0],
+      upperArmR: [28, 16, -24], forearmR: [40, 0, 0], handR: [-42, 0, -6],
+      upperArmL: [36, -10, 30], forearmL: [70, 0, 0], handL: [0, 0, 10],
     } },
     { t: 0.5, ease: 'inOut', pose: {
-      hips: [0, -25, 0], spine: [-8, 10, 2], chest: [-3, 12, 0], head: [2, -14, 0],
-      thighL: [22, 14, -4], shinL: [-32, 0, 0], footL: [12, 0, 0],
-      thighR: [-15, -12, 4], shinR: [-36, 0, 0], footR: [16, 0, 0],
-      upperArmR: [55, 10, -20], forearmR: [86, 0, 0], handR: [0, 0, -14],
-      upperArmL: [59, -12, 36], forearmL: [94, 0, 0], handL: [0, 0, 16],
+      hips: [0, -29, 0], spine: [-9, 12, 2], chest: [-3, 14, 0], head: [1, -18, 0],
+      thighL: [26, 16, -5], shinL: [-36, 0, 0], footL: [0, -14, 0],
+      thighR: [-17, -14, 5], shinR: [-40, 0, 0], footR: [0, 16, 0],
+      upperArmR: [26, 16, -25], forearmR: [42, 0, 0], handR: [-43, 0, -6],
+      upperArmL: [34, -10, 31], forearmL: [72, 0, 0], handL: [0, 0, 10],
     } },
     { t: 1, ease: 'inOut', pose: {
-      hips: [0, -26, 0], spine: [-7, 10, 2], chest: [-4, 12, 0], head: [4, -16, 0],
-      thighL: [20, 14, -4], shinL: [-30, 0, 0], footL: [12, 0, 0],
-      thighR: [-14, -12, 4], shinR: [-34, 0, 0], footR: [16, 0, 0],
-      upperArmR: [58, 10, -18], forearmR: [88, 0, 0], handR: [0, 0, -14],
-      upperArmL: [62, -12, 34], forearmL: [96, 0, 0], handL: [0, 0, 16],
+      hips: [0, -30, 0], spine: [-8, 12, 2], chest: [-4, 14, 0], head: [3, -20, 0],
+      thighL: [24, 16, -5], shinL: [-34, 0, 0], footL: [0, -14, 0],
+      thighR: [-16, -14, 5], shinR: [-38, 0, 0], footR: [0, 16, 0],
+      upperArmR: [28, 16, -24], forearmR: [40, 0, 0], handR: [-42, 0, -6],
+      upperArmL: [36, -10, 30], forearmL: [70, 0, 0], handL: [0, 0, 10],
     } },
   ],
 };
 
 /** One full stride = one clip cycle: contact, pass, contact, pass. */
 export const WALK: Clip = {
-  name: 'walk', dur: 1, loop: true, mask: 'full',
+  name: 'walk', dur: 1, loop: true, mask: 'full', offHandFree: true,
   keys: [
     { t: 0, ease: 'inOut', pose: {
       hips: [0, -6, 0], spine: [-5, 3, 0], chest: [-2, -3, 0], head: [2, 0, 0],
       thighL: [26, 2, -2], shinL: [-12, 0, 0], footL: [-6, 0, 0],
       thighR: [-22, -2, 2], shinR: [-26, 0, 0], footR: [18, 0, 0],
-      upperArmR: [34, 0, -8], forearmR: [58, 0, 0],
+      upperArmR: [4, 4, -8], forearmR: [14, 0, 0], handR: [-4, 0, -8],
       upperArmL: [46, 0, 24], forearmL: [72, 0, 0],
     } },
     { t: 0.25, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-6, 0, 0], chest: [-3, 0, 0], head: [2, 0, 0],
       thighL: [4, 2, -2], shinL: [-8, 0, 0], footL: [2, 0, 0],
       thighR: [2, -2, 2], shinR: [-42, 0, 0], footR: [20, 0, 0],
-      upperArmR: [40, 0, -8], forearmR: [64, 0, 0],
+      upperArmR: [-2, 4, -8], forearmR: [16, 0, 0], handR: [-4, 0, -8],
       upperArmL: [40, 0, 24], forearmL: [66, 0, 0],
     } },
     { t: 0.5, ease: 'inOut', pose: {
       hips: [0, 6, 0], spine: [-5, -3, 0], chest: [-2, 3, 0], head: [2, 0, 0],
       thighL: [-22, 2, -2], shinL: [-26, 0, 0], footL: [18, 0, 0],
       thighR: [26, -2, 2], shinR: [-12, 0, 0], footR: [-6, 0, 0],
-      upperArmR: [46, 0, -8], forearmR: [72, 0, 0],
+      upperArmR: [-8, 4, -8], forearmR: [18, 0, 0], handR: [-4, 0, -8],
       upperArmL: [34, 0, 24], forearmL: [58, 0, 0],
     } },
     { t: 0.75, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-6, 0, 0], chest: [-3, 0, 0], head: [2, 0, 0],
       thighL: [2, 2, -2], shinL: [-42, 0, 0], footL: [20, 0, 0],
       thighR: [4, -2, 2], shinR: [-8, 0, 0], footR: [2, 0, 0],
-      upperArmR: [40, 0, -8], forearmR: [64, 0, 0],
+      upperArmR: [-2, 4, -8], forearmR: [16, 0, 0], handR: [-4, 0, -8],
       upperArmL: [40, 0, 24], forearmL: [66, 0, 0],
     } },
     { t: 1, ease: 'inOut', pose: {
       hips: [0, -6, 0], spine: [-5, 3, 0], chest: [-2, -3, 0], head: [2, 0, 0],
       thighL: [26, 2, -2], shinL: [-12, 0, 0], footL: [-6, 0, 0],
       thighR: [-22, -2, 2], shinR: [-26, 0, 0], footR: [18, 0, 0],
-      upperArmR: [34, 0, -8], forearmR: [58, 0, 0],
+      upperArmR: [4, 4, -8], forearmR: [14, 0, 0], handR: [-4, 0, -8],
       upperArmL: [46, 0, 24], forearmL: [72, 0, 0],
     } },
   ],
@@ -117,41 +123,41 @@ export const WALK: Clip = {
 
 /** Longer stride, deeper forward lean, bigger counter-rotation through the shoulders. */
 export const RUN: Clip = {
-  name: 'run', dur: 1, loop: true, mask: 'full',
+  name: 'run', dur: 1, loop: true, mask: 'full', offHandFree: true,
   keys: [
     { t: 0, ease: 'out', pose: {
       hips: [0, -12, 0], spine: [-14, 6, 0], chest: [-6, -8, 0], head: [10, 0, 0],
       thighL: [48, 3, -3], shinL: [-24, 0, 0], footL: [-12, 0, 0],
       thighR: [-34, -3, 3], shinR: [-64, 0, 0], footR: [26, 0, 0],
-      upperArmR: [22, 0, -12], forearmR: [82, 0, 0],
+      upperArmR: [-6, 4, -12], forearmR: [18, 0, 0], handR: [12, 0, -8],
       upperArmL: [74, 0, 26], forearmL: [96, 0, 0],
     } },
     { t: 0.25, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-16, 0, 0], chest: [-7, 0, 0], head: [11, 0, 0],
       thighL: [10, 3, -3], shinL: [-14, 0, 0], footL: [4, 0, 0],
       thighR: [8, -3, 3], shinR: [-96, 0, 0], footR: [30, 0, 0],
-      upperArmR: [48, 0, -12], forearmR: [88, 0, 0],
+      upperArmR: [-14, 4, -12], forearmR: [22, 0, 0], handR: [12, 0, -8],
       upperArmL: [50, 0, 26], forearmL: [88, 0, 0],
     } },
     { t: 0.5, ease: 'out', pose: {
       hips: [0, 12, 0], spine: [-14, -6, 0], chest: [-6, 8, 0], head: [10, 0, 0],
       thighL: [-34, 3, -3], shinL: [-64, 0, 0], footL: [26, 0, 0],
       thighR: [48, -3, 3], shinR: [-24, 0, 0], footR: [-12, 0, 0],
-      upperArmR: [74, 0, -12], forearmR: [96, 0, 0],
+      upperArmR: [-22, 4, -12], forearmR: [26, 0, 0], handR: [12, 0, -8],
       upperArmL: [22, 0, 26], forearmL: [82, 0, 0],
     } },
     { t: 0.75, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-16, 0, 0], chest: [-7, 0, 0], head: [11, 0, 0],
       thighL: [8, 3, -3], shinL: [-96, 0, 0], footL: [30, 0, 0],
       thighR: [10, -3, 3], shinR: [-14, 0, 0], footR: [4, 0, 0],
-      upperArmR: [48, 0, -12], forearmR: [88, 0, 0],
+      upperArmR: [-14, 4, -12], forearmR: [22, 0, 0], handR: [12, 0, -8],
       upperArmL: [50, 0, 26], forearmL: [88, 0, 0],
     } },
     { t: 1, ease: 'out', pose: {
       hips: [0, -12, 0], spine: [-14, 6, 0], chest: [-6, -8, 0], head: [10, 0, 0],
       thighL: [48, 3, -3], shinL: [-24, 0, 0], footL: [-12, 0, 0],
       thighR: [-34, -3, 3], shinR: [-64, 0, 0], footR: [26, 0, 0],
-      upperArmR: [22, 0, -12], forearmR: [82, 0, 0],
+      upperArmR: [-6, 4, -12], forearmR: [18, 0, 0], handR: [12, 0, -8],
       upperArmL: [74, 0, 26], forearmL: [96, 0, 0],
     } },
   ],
@@ -317,7 +323,7 @@ export const HEAVY: Clip = {
 
 /** A low, fast evade — crouch, push off, land absorbing. */
 export const DODGE: Clip = {
-  name: 'dodge', dur: 0.46, mask: 'full',
+  name: 'dodge', dur: 0.46, mask: 'full', ground: false,
   keys: [
     { t: 0, ease: 'in', pose: {
       hips: [0, -20, 0], spine: [-6, 8, 0], chest: [-3, 10, 0], head: [3, -12, 0],
@@ -347,7 +353,7 @@ export const DODGE: Clip = {
 
 /** Flinch. Short, sharp, and out of the way fast so it never eats a combo. */
 export const HIT_REACT: Clip = {
-  name: 'hit', dur: 0.34, mask: 'upper',
+  name: 'hit', dur: 0.34, mask: 'upper', offHandFree: true,
   keys: [
     { t: 0, ease: 'out', pose: {} },
     { t: 0.22, ease: 'out', pose: {
@@ -361,7 +367,7 @@ export const HIT_REACT: Clip = {
 
 /** Collapse. Ends folded on the ground so the dissolve has something to eat. */
 export const DEATH: Clip = {
-  name: 'death', dur: 1.15, mask: 'full',
+  name: 'death', dur: 1.15, mask: 'full', ground: false, offHandFree: true,
   keys: [
     { t: 0, ease: 'out', pose: {} },
     { t: 0.2, ease: 'out', pose: {
@@ -386,33 +392,30 @@ export const DEATH: Clip = {
 
 // ---------------------------------------------------------------- nunchucks
 
-/** Idle spin: the chucks never stop moving, which is most of the character. */
+/** Loose ready stance, the held baton low at the right hip; the free baton hangs and sways. */
 export const NUN_IDLE: Clip = {
-  name: 'nunIdle', dur: 1.4, loop: true, mask: 'full',
+  name: 'nunIdle', dur: 3.2, loop: true, mask: 'full',
   keys: [
-    { t: 0, ease: 'linear', pose: {
-      hips: [0, 10, 0], spine: [-6, -6, 0], chest: [-3, -8, 0], head: [2, 10, 0],
-      thighL: [10, -6, -3], shinL: [-18, 0, 0], thighR: [-6, 6, 3], shinR: [-22, 0, 0],
-      upperArmR: [-30, 0, -40], forearmR: [110, 0, 0], handR: [0, 60, 0],
-      upperArmL: [30, 0, 30], forearmL: [40, 0, 0],
+    { t: 0, ease: 'inOut', pose: {
+      hips: [0, 14, 0], spine: [-5, -6, -1], chest: [-2, -8, 0], head: [2, 12, 0],
+      thighL: [14, -8, -4], shinL: [-22, 0, 0], footL: [0, -10, 0],
+      thighR: [-8, 8, 4], shinR: [-20, 0, 0], footR: [0, 14, 0],
+      upperArmR: [6, 0, -12], forearmR: [46, 0, 0], handR: [-20, 30, 0],
+      upperArmL: [30, 0, 8], forearmL: [64, 0, 0], handL: [0, 0, 6],
     } },
-    { t: 0.33, ease: 'linear', pose: {
-      hips: [0, 12, 0], spine: [-7, -4, 1], chest: [-3, -7, 0], head: [2, 8, 0],
-      thighL: [11, -6, -3], shinL: [-19, 0, 0], thighR: [-7, 6, 3], shinR: [-23, 0, 0],
-      upperArmR: [-52, 0, -30], forearmR: [126, 0, 0], handR: [0, 180, 0],
-      upperArmL: [26, 0, 32], forearmL: [44, 0, 0],
+    { t: 0.5, ease: 'inOut', pose: {
+      hips: [0, 12, 0], spine: [-6, -4, -1], chest: [-1, -7, 0], head: [1, 9, 0],
+      thighL: [15, -8, -4], shinL: [-24, 0, 0], footL: [0, -10, 0],
+      thighR: [-9, 8, 4], shinR: [-21, 0, 0], footR: [0, 14, 0],
+      upperArmR: [4, 0, -14], forearmR: [50, 0, 0], handR: [-22, 20, 0],
+      upperArmL: [28, 0, 10], forearmL: [60, 0, 0], handL: [0, 0, 6],
     } },
-    { t: 0.66, ease: 'linear', pose: {
-      hips: [0, 8, 0], spine: [-5, -8, -1], chest: [-2, -9, 0], head: [2, 12, 0],
-      thighL: [9, -6, -3], shinL: [-17, 0, 0], thighR: [-5, 6, 3], shinR: [-21, 0, 0],
-      upperArmR: [-18, 0, -48], forearmR: [98, 0, 0], handR: [0, 300, 0],
-      upperArmL: [32, 0, 28], forearmL: [38, 0, 0],
-    } },
-    { t: 1, ease: 'linear', pose: {
-      hips: [0, 10, 0], spine: [-6, -6, 0], chest: [-3, -8, 0], head: [2, 10, 0],
-      thighL: [10, -6, -3], shinL: [-18, 0, 0], thighR: [-6, 6, 3], shinR: [-22, 0, 0],
-      upperArmR: [-30, 0, -40], forearmR: [110, 0, 0], handR: [0, 420, 0],
-      upperArmL: [30, 0, 30], forearmL: [40, 0, 0],
+    { t: 1, ease: 'inOut', pose: {
+      hips: [0, 14, 0], spine: [-5, -6, -1], chest: [-2, -8, 0], head: [2, 12, 0],
+      thighL: [14, -8, -4], shinL: [-22, 0, 0], footL: [0, -10, 0],
+      thighR: [-8, 8, 4], shinR: [-20, 0, 0], footR: [0, 14, 0],
+      upperArmR: [6, 0, -12], forearmR: [46, 0, 0], handR: [-20, 30, 0],
+      upperArmL: [30, 0, 8], forearmL: [64, 0, 0], handL: [0, 0, 6],
     } },
   ],
 };
@@ -499,19 +502,19 @@ export const ENEMY_IDLE: Clip = {
     { t: 0, ease: 'inOut', pose: {
       hips: [0, 6, 0], spine: [-14, -4, 2], chest: [-8, -4, 1], head: [16, 6, -3],
       thighL: [12, 6, -5], shinL: [-22, 0, 0], thighR: [-8, -6, 5], shinR: [-18, 0, 0],
-      upperArmR: [16, 0, -22], forearmR: [40, 0, 0],
+      upperArmR: [16, 0, -22], forearmR: [40, 0, 0], handR: [-34, 0, 0],
       upperArmL: [12, 0, 26], forearmL: [34, 0, 0],
     } },
     { t: 0.5, ease: 'inOut', pose: {
       hips: [0, 4, 0], spine: [-17, -3, 1], chest: [-10, -3, 0], head: [19, 4, -2],
       thighL: [13, 6, -5], shinL: [-24, 0, 0], thighR: [-9, -6, 5], shinR: [-19, 0, 0],
-      upperArmR: [12, 0, -26], forearmR: [46, 0, 0],
+      upperArmR: [12, 0, -26], forearmR: [46, 0, 0], handR: [-36, 0, 0],
       upperArmL: [8, 0, 30], forearmL: [40, 0, 0],
     } },
     { t: 1, ease: 'inOut', pose: {
       hips: [0, 6, 0], spine: [-14, -4, 2], chest: [-8, -4, 1], head: [16, 6, -3],
       thighL: [12, 6, -5], shinL: [-22, 0, 0], thighR: [-8, -6, 5], shinR: [-18, 0, 0],
-      upperArmR: [16, 0, -22], forearmR: [40, 0, 0],
+      upperArmR: [16, 0, -22], forearmR: [40, 0, 0], handR: [-34, 0, 0],
       upperArmL: [12, 0, 26], forearmL: [34, 0, 0],
     } },
   ],
@@ -519,35 +522,35 @@ export const ENEMY_IDLE: Clip = {
 
 /** Loping run — asymmetric, arms trailing, so it doesn't read like the player. */
 export const ENEMY_RUN: Clip = {
-  name: 'enemyRun', dur: 0.9, loop: true, mask: 'full',
+  name: 'enemyRun', dur: 0.9, loop: true, mask: 'full', offHandFree: true,
   keys: [
     { t: 0, ease: 'out', pose: {
       hips: [0, -10, 0], spine: [-24, 5, 3], chest: [-10, -6, 2], head: [22, 2, -4],
       thighL: [44, 3, -4], shinL: [-28, 0, 0], footL: [-10, 0, 0],
       thighR: [-30, -3, 4], shinR: [-58, 0, 0], footR: [24, 0, 0],
-      upperArmR: [-6, 0, -30], forearmR: [72, 0, 0], upperArmL: [40, 0, 40], forearmL: [86, 0, 0],
+      upperArmR: [-6, 0, -34], forearmR: [20, 0, 0], handR: [8, 0, 0], upperArmL: [40, 0, 40], forearmL: [86, 0, 0],
     } },
     { t: 0.25, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-26, 0, 2], chest: [-11, 0, 1], head: [23, 0, -3],
       thighL: [8, 3, -4], shinL: [-16, 0, 0], thighR: [6, -3, 4], shinR: [-88, 0, 0], footR: [28, 0, 0],
-      upperArmR: [18, 0, -32], forearmR: [80, 0, 0], upperArmL: [22, 0, 42], forearmL: [80, 0, 0],
+      upperArmR: [-14, 0, -34], forearmR: [20, 0, 0], handR: [8, 0, 0], upperArmL: [22, 0, 42], forearmL: [80, 0, 0],
     } },
     { t: 0.5, ease: 'out', pose: {
       hips: [0, 10, 0], spine: [-24, -5, 1], chest: [-10, 6, 0], head: [22, -2, -2],
       thighL: [-30, 3, -4], shinL: [-58, 0, 0], footL: [24, 0, 0],
       thighR: [44, -3, 4], shinR: [-28, 0, 0], footR: [-10, 0, 0],
-      upperArmR: [40, 0, -30], forearmR: [86, 0, 0], upperArmL: [-6, 0, 40], forearmL: [72, 0, 0],
+      upperArmR: [-22, 0, -34], forearmR: [20, 0, 0], handR: [8, 0, 0], upperArmL: [-6, 0, 40], forearmL: [72, 0, 0],
     } },
     { t: 0.75, ease: 'inOut', pose: {
       hips: [0, 0, 0], spine: [-26, 0, 2], chest: [-11, 0, 1], head: [23, 0, -3],
       thighL: [6, 3, -4], shinL: [-88, 0, 0], footL: [28, 0, 0], thighR: [8, -3, 4], shinR: [-16, 0, 0],
-      upperArmR: [18, 0, -32], forearmR: [80, 0, 0], upperArmL: [22, 0, 42], forearmL: [80, 0, 0],
+      upperArmR: [-14, 0, -34], forearmR: [20, 0, 0], handR: [8, 0, 0], upperArmL: [22, 0, 42], forearmL: [80, 0, 0],
     } },
     { t: 1, ease: 'out', pose: {
       hips: [0, -10, 0], spine: [-24, 5, 3], chest: [-10, -6, 2], head: [22, 2, -4],
       thighL: [44, 3, -4], shinL: [-28, 0, 0], footL: [-10, 0, 0],
       thighR: [-30, -3, 4], shinR: [-58, 0, 0], footR: [24, 0, 0],
-      upperArmR: [-6, 0, -30], forearmR: [72, 0, 0], upperArmL: [40, 0, 40], forearmL: [86, 0, 0],
+      upperArmR: [-6, 0, -34], forearmR: [20, 0, 0], handR: [8, 0, 0], upperArmL: [40, 0, 40], forearmL: [86, 0, 0],
     } },
   ],
   events: [{ t: 0.02, name: 'step' }, { t: 0.52, name: 'step' }],

@@ -3,6 +3,9 @@ import type { EngineContext } from '@/core/engine';
 import type { Fighter } from './characters';
 import { Animator, type Clip } from './anim';
 import { WeaponTrail } from './weapons';
+import { solveTwoBone } from './ik';
+import { FOREARM, HIPS_Y, SOLE, UPPER_ARM } from './rig';
+import { Quat } from 'playcanvas';
 import { clamp01, damp, dampAngle, DEG } from '@/utils/math';
 
 /**
@@ -55,6 +58,12 @@ export class Actor {
   /** 0 = solid, 1 = fully dissolved */
   dissolve = 0;
   private baseAccent: Color;
+  /** vertical offset applied to the hips so the lowest sole meets the ground */
+  private groundOff = 0;
+  private gripT = new Vec3();
+  private gripPole = new Vec3();
+  private gripQ = new Quat();
+  private gripInv = new Quat();
 
   constructor(ctx: EngineContext, o: ActorOpts) {
     this.fighter = o.fighter;
@@ -171,6 +180,8 @@ export class Actor {
     this.root.setEulerAngles(0, this.yaw / DEG, 0);
 
     this.anim.update(dt);
+    this.groundFeet(dt);
+    this.solveOffHand();
 
     // --- weapon trail
     const seg = this.weaponSegment();
@@ -189,6 +200,46 @@ export class Actor {
       m.emissiveIntensity = 0.85 + f * 5;
       m.update();
     }
+  }
+
+  /**
+   * Pelvis drop: after the pose is applied, measure the lowest sole and shift the whole body so it
+   * meets the ground. An FK leg chain that crouches, lunges or strides pulls its feet up off the
+   * floor; this puts them back without an IK solve, and it is what makes a stance look planted.
+   */
+  private groundFeet(dt: number): void {
+    const rig = this.fighter.rig;
+    const s = rig.scale;
+    let target = this.groundOff;
+    if (this.anim.grounded) {
+      const lowest = Math.min(rig.joints.footL.getPosition().y, rig.joints.footR.getPosition().y) - SOLE * s;
+      // the joints already include the current offset, so the correction is relative to it
+      target = this.groundOff + (this.root.getPosition().y - lowest);
+      target = Math.max(-0.42 * s, Math.min(0.20 * s, target));
+    } else {
+      target = 0;
+    }
+    this.groundOff = damp(this.groundOff, target, this.anim.grounded ? 30 : 6, dt);
+    rig.joints.hips.setLocalPosition(0, HIPS_Y * s + this.groundOff, 0);
+  }
+
+  /** Close the left hand on the hilt when the weapon is two-handed. */
+  private solveOffHand(): void {
+    const grip = this.fighter.weapon.offHandGrip;
+    if (!grip || !this.anim.offHandOnWeapon) return;
+    const rig = this.fighter.rig;
+    const s = rig.scale;
+    const wt = this.fighter.weaponEntity.getWorldTransform();
+    wt.transformPoint(grip, this.gripT);
+    // elbow points down and out to the character's left
+    const yaw = this.yaw;
+    this.gripPole.set(-Math.cos(yaw) * 0.55, -0.8, Math.sin(yaw) * 0.55);
+    solveTwoBone(rig.joints.upperArmL, rig.joints.forearmL, this.gripT, this.gripPole, UPPER_ARM * s, FOREARM * s);
+    // the off-hand wraps the grip the same way the weapon hand does: weapon rotation composed
+    // with the inverse of the weapon's own offset inside the right hand
+    this.gripInv.copy(this.fighter.weaponEntity.getLocalRotation()).invert();
+    this.gripQ.mul2(this.fighter.weaponEntity.getRotation(), this.gripInv);
+    rig.joints.handL.setRotation(this.gripQ);
   }
 
   /** Sink and shrink on defeat — cheap stand-in for a dissolve shader, and it reads. */

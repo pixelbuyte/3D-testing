@@ -19,78 +19,94 @@ export interface WeaponBuild {
   /** local-space base and tip of the cutting edge, used for the trail and hit sweeps */
   base: Vec3;
   tip: Vec3;
+  /** where the second hand closes on the grip, in weapon space; absent for one-handed weapons */
+  offHandGrip?: Vec3;
 }
 
-/** A katana: slightly curved blade, tsuba, wrapped grip. */
+/** A katana: curved blade with a visible spine and edge bevel, tsuba, diamond-wrapped tsuka. */
 export function buildKatana(ctx: EngineContext, steel: StandardMaterial, wrap: StandardMaterial, fitting: StandardMaterial): WeaponBuild {
   const e = new Entity('katana');
-  const L = 0.86;          // blade length
+  const L = 0.70;          // blade length
   const blade: MeshData = emptyData();
-  // four short segments with a rising curve give the sori without a bend deformer
-  const segs = 4;
+  // six short segments with a rising curve give the sori without a bend deformer; the blade is a
+  // flattened hexagon so it has a spine, two flats and an edge rather than reading as a plank
+  const segs = 6;
   for (let i = 0; i < segs; i++) {
-    const t0 = i / segs;
+    const t0 = i / segs, t1 = (i + 1) / segs;
     const y = 0.10 + L * t0;
-    const curve = t0 * t0 * 0.055;
-    const w = 0.030 - t0 * 0.008;
+    const curve = t0 * t0 * 0.06;
+    const w = 0.028 - t0 * 0.006;
     appendData(blade, transformData(
-      boxData(w, L / segs + 0.004, 0.010),
-      [0, y + L / segs * 0.5, curve], [t0 * 3.2, 0, 0]));
+      cylinderData(w, w * (t1 < 1 ? 1 : 0.55), L / segs + 0.003, 6, 1, false),
+      [0, y + L / segs * 0.5, curve], [t0 * 4.0, 0, 0], [1, 1, 0.28]));
   }
-  // the point
-  appendData(blade, transformData(boxData(0.020, 0.10, 0.008), [0, 0.10 + L + 0.04, 0.062], [7, 0, 0]));
-  const bladeMesh = createMesh(ctx.device, blade);
+  // the kissaki: a short taper to the point
+  appendData(blade, transformData(cylinderData(0.022, 0.003, 0.09, 6, 1, false), [0, 0.10 + L + 0.043, 0.066], [7, 0, 0], [1, 1, 0.28]));
   const bladeEnt = new Entity('blade');
-  bladeEnt.addComponent('render', { meshInstances: [new MeshInstance(bladeMesh, steel)], castShadows: true });
+  bladeEnt.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, blade), steel)], castShadows: true });
   e.addChild(bladeEnt);
 
   const guard: MeshData = emptyData();
-  appendData(guard, transformData(cylinderData(0.055, 0.055, 0.014, 12, 1, true), [0, 0.10, 0], [90, 0, 0], [1, 1, 0.35]));
+  appendData(guard, transformData(cylinderData(0.052, 0.052, 0.012, 8, 1, true), [0, 0.10, 0], [0, 0, 0], [1, 1, 0.55]));
+  appendData(guard, transformData(cylinderData(0.022, 0.024, 0.02, 8, 1, true), [0, 0.088, 0]));    // fuchi collar
+  appendData(guard, transformData(cylinderData(0.020, 0.017, 0.02, 8, 1, true), [0, -0.15, 0]));    // kashira cap
   const guardEnt = new Entity('tsuba');
   guardEnt.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, guard), fitting)], castShadows: true });
   e.addChild(guardEnt);
 
+  // the wrap: alternating raised diamonds down the grip read as tsuka-ito at any distance
   const grip: MeshData = emptyData();
-  appendData(grip, transformData(boxData(0.028, 0.24, 0.020), [0, -0.02, 0]));
-  appendData(grip, transformData(cylinderData(0.020, 0.018, 0.02, 8, 1, true), [0, -0.145, 0]));
+  appendData(grip, transformData(boxData(0.026, 0.24, 0.018), [0, -0.03, 0]));
+  for (let i = 0; i < 6; i++) {
+    appendData(grip, transformData(boxData(0.030, 0.022, 0.022), [0, 0.07 - i * 0.038, 0], [0, 0, i % 2 ? 26 : -26]));
+  }
   const gripEnt = new Entity('tsuka');
   gripEnt.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, grip), wrap)], castShadows: true });
   e.addChild(gripEnt);
 
-  return { entity: e, base: new Vec3(0, 0.12, 0), tip: new Vec3(0, 0.10 + L + 0.08, 0.07) };
+  return { entity: e, base: new Vec3(0, 0.12, 0), tip: new Vec3(0, 0.10 + L + 0.09, 0.075), offHandGrip: new Vec3(0, -0.105, 0) };
 }
 
-/** Nunchucks: two batons on a short chain. The chain is posed, not simulated. */
-export function buildNunchucks(ctx: EngineContext, wood: StandardMaterial, metal: StandardMaterial): WeaponBuild & { free: Entity } {
+/** Nunchucks: two octagonal batons with lit caps, joined by an actual chain of links. */
+export function buildNunchucks(ctx: EngineContext, wood: StandardMaterial, metal: StandardMaterial, cap: StandardMaterial): WeaponBuild & { free: Entity } {
   const e = new Entity('nunchucks');
   const stick = (): MeshData => {
     const d = emptyData();
-    appendData(d, transformData(cylinderData(0.023, 0.020, 0.30, 8, 1, true), [0, -0.15, 0]));
-    appendData(d, transformData(cylinderData(0.026, 0.026, 0.016, 8, 1, true), [0, -0.006, 0]));
-    appendData(d, transformData(cylinderData(0.026, 0.026, 0.016, 8, 1, true), [0, -0.295, 0]));
+    appendData(d, transformData(cylinderData(0.020, 0.023, 0.28, 8, 1, true), [0, -0.15, 0]));
+    // a shallow groove band a third of the way down, so the baton is not a featureless rod
+    appendData(d, transformData(cylinderData(0.0245, 0.0245, 0.012, 8, 1, true), [0, -0.105, 0]));
+    return d;
+  };
+  const caps = (): MeshData => {
+    const d = emptyData();
+    appendData(d, transformData(cylinderData(0.0235, 0.021, 0.028, 8, 1, true), [0, -0.012, 0]));
+    appendData(d, transformData(cylinderData(0.0225, 0.020, 0.024, 8, 1, true), [0, -0.288, 0]));
     return d;
   };
   const held = new Entity('chuck-held');
-  held.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, stick()), wood)], castShadows: true });
+  held.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, stick()), wood), new MeshInstance(createMesh(ctx.device, caps()), cap)], castShadows: true });
   e.addChild(held);
 
   // the free baton hangs off a chain and is spun by the animation; its own entity so it can whip
   const pivot = new Entity('chain-pivot');
-  pivot.setLocalPosition(0, 0.02, 0);
+  pivot.setLocalPosition(0, 0.012, 0);
   const chain: MeshData = emptyData();
-  for (let i = 0; i < 4; i++) appendData(chain, transformData(cylinderData(0.008, 0.008, 0.032, 5, 1, true), [0, 0.03 + i * 0.032, 0]));
+  for (let i = 0; i < 5; i++) {
+    // alternating link orientation, the way a real chain lies
+    appendData(chain, transformData(cylinderData(0.011, 0.011, 0.006, 6, 1, false), [0, 0.014 + i * 0.026, 0], [90, i % 2 ? 90 : 0, 0], [1.6, 1, 1]));
+  }
   const chainEnt = new Entity('chain');
   chainEnt.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, chain), metal)], castShadows: false });
   pivot.addChild(chainEnt);
 
   const free = new Entity('chuck-free');
-  free.setLocalPosition(0, 0.165, 0);
-  free.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, stick()), wood)], castShadows: true });
+  free.setLocalPosition(0, 0.155, 0);
+  free.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, stick()), wood), new MeshInstance(createMesh(ctx.device, caps()), cap)], castShadows: true });
   free.setLocalEulerAngles(180, 0, 0);
   pivot.addChild(free);
   e.addChild(pivot);
 
-  return { entity: e, base: new Vec3(0, 0.02, 0), tip: new Vec3(0, 0.46, 0), free: pivot };
+  return { entity: e, base: new Vec3(0, 0.02, 0), tip: new Vec3(0, 0.45, 0), free: pivot };
 }
 
 const MAX_SEG = 22;
