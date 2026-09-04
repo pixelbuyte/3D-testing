@@ -179,6 +179,13 @@ designed for silhouette rather than detail because it is nearly always seen at d
 - Idle animation is per-entity transform only — no skinning: breathing, a slow weight shift, head
   turn, arm swing on the walker, and figures glancing at you when you come within 14 m.
 
+<p align="center">
+  <img src="docs/shots/novaprompt.jpg" width="49%" alt="Nova at the head of the courtyard, with the [E] LISTEN prompt">
+  <img src="docs/shots/nova34.jpg" width="49%" alt="Nova seen three-quarter from across the courtyard">
+  <img src="docs/shots/kneel.jpg" width="49%" alt="A figure kneeling in seiza before the altar">
+  <img src="docs/shots/walker.jpg" width="49%" alt="Figures at distance across the courtyard, giving the level scale">
+</p>
+
 Nova also carries a soft omni light that brightens with her song and with the shrine's state, which
 is what lifts her off the dusk background in the wide courtyard shot.
 
