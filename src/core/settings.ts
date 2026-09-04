@@ -86,6 +86,14 @@ class SettingsStore extends Emitter<SettingsEvents> {
     if (preset && preset in PRESETS) this.applyPreset(preset as Preset, false);
     if (p.has('noDof')) this.data.dof = false;
     if (p.has('noGrain')) this.data.grain = false;
+    // capture/benchmark overrides used by tools/capture-video.mjs
+    const scale = Number(p.get('scale'));
+    if (Number.isFinite(scale) && scale > 0) { this.data.renderScale = scale; this.data.dynamicResolution = false; }
+    // 'fast' strips the expensive full-screen passes; used only by the offline video capture,
+    // where TAA jitter never converges anyway because the camera teleports every frame.
+    if (p.has('fast')) { this.data.taa = false; this.data.ssao = false; this.data.dof = false; this.data.godRays = false; this.data.mistLayers = 3; }
+    const foliage = Number(p.get('foliage'));
+    if (Number.isFinite(foliage) && foliage > 0) this.data.foliageDensity = foliage;
   }
 
   get all(): Readonly<Settings> { return this.data; }

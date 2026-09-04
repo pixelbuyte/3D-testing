@@ -5,3 +5,6 @@ assets-src/
 *.log
 .DS_Store
 screenshots/
+demo/plates/
+demo/caps/
+demo/score.wav

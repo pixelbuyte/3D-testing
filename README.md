@@ -200,3 +200,32 @@ All third-party assets are **CC0** from [Poly Haven](https://polyhaven.com/licen
 sets, the `kloppenheim_06` HDRI, and the scanned rock / plant / lantern / statue props listed in
 `tools/download-assets.mjs`. They are repacked (WebP, decimated GLB) by the tools in `tools/`.
 All shaders, geometry, audio and code in `src/` are original.
+
+---
+
+## Demo trailer
+
+`demo/echoes-of-the-shrine.mp4` — a 39-second narrated trailer (1600×900, H.264 + AAC).
+
+It is cut from real rendered frames of the game, with an on-screen narrator (**Nova**) and an
+original procedural score. Regenerate the whole thing with:
+
+```bash
+node tools/capture-plates.mjs demo/plates    # render the still plates from the running game (~15 min)
+node tools/render-captions.mjs demo/caps     # Nova's narration as transparent PNG overlays
+node tools/make-soundtrack.mjs --seconds 40 --out demo/score.wav
+node tools/build-trailer.mjs                 # Ken Burns + cross-dissolves + captions + score
+```
+
+**Why a montage rather than a real-time capture.** This environment has no GPU: the game runs on
+Chromium's SwiftShader software rasteriser, where a single frame of this scene costs 20–30 seconds.
+A 39-second capture at 24 fps would take over five hours, so `tools/capture-video.mjs` (which drives
+the camera by frame index and would produce a true flythrough) is included but impractical here.
+Instead `capture-plates.mjs` renders thirteen high-quality stills along the intended camera path and
+`build-trailer.mjs` cuts them together with slow moves. Every frame is genuine engine output —
+it is edited motion, not live gameplay footage. On a machine with a real GPU, run
+`tools/capture-video.mjs` for the flythrough version.
+
+The score (`tools/make-soundtrack.mjs`) is synthesised from scratch — minor-pentatonic plucks over a
+drone, a wind bed, and a pad that blooms for the finale — mirroring the in-game audio design. Nova
+is an original fictional narrator; no real person is depicted or implied.
