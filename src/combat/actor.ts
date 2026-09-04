@@ -1,7 +1,7 @@
 import { Color, Vec3 } from 'playcanvas';
 import type { EngineContext } from '@/core/engine';
 import type { Fighter } from './characters';
-import { Animator, type Clip } from './anim';
+import type { Clip, FighterAnimator } from './anim';
 import { WeaponTrail } from './weapons';
 import { solveTwoBone } from './ik';
 import { FOREARM, HIPS_Y, SOLE, UPPER_ARM } from './rig';
@@ -32,7 +32,7 @@ export interface ActorOpts {
 export class Actor {
   readonly fighter: Fighter;
   readonly team: Team;
-  readonly anim: Animator;
+  readonly anim: FighterAnimator;
   readonly pos = new Vec3();
   readonly vel = new Vec3();
   yaw = 0;                 // radians, smoothed
@@ -73,20 +73,20 @@ export class Actor {
     this.health = this.maxHealth;
     // wide enough that fighters keep a readable gap: at 0.38 they piled into one clump and the
     // fight stopped being legible from any angle
-    this.radius = 0.54 * o.fighter.rig.scale;
+    this.radius = 0.54 * o.fighter.scale;
     this.runSpeed = o.runSpeed ?? 5.2;
-    this.anim = new Animator(o.fighter.rig);
+    this.anim = o.fighter.animator;
     this.trail = new WeaponTrail(ctx, o.trailColor, o.trailLife ?? 0.16);
-    this.baseAccent = o.fighter.rig.mats.accent.emissive.clone();
-    ctx.app.root.addChild(o.fighter.rig.root);
+    this.baseAccent = o.fighter.flashMats[0]?.emissive.clone() ?? new Color(0, 0, 0);
+    ctx.app.root.addChild(o.fighter.root);
   }
 
-  get root() { return this.fighter.rig.root; }
+  get root() { return this.fighter.root; }
   get busy(): boolean { return this.locked > 0; }
   /** remaining action lock, in seconds — surfaced in the debug stats */
   get lockLeft(): number { return this.locked; }
   /** chest height, for aiming look-at and camera focus */
-  get chest(): Vec3 { return this.fighter.rig.jointPos('chest'); }
+  get chest(): Vec3 { return this.fighter.chest(); }
 
   spawn(x: number, z: number, yawDeg: number): void {
     this.pos.set(x, this.ground(x, z), z);
@@ -104,10 +104,14 @@ export class Actor {
 
   distanceTo(o: Actor): number { return Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z); }
 
-  /** Play an action clip and lock the actor for its duration (minus a little, so combos link). */
-  act(clip: Clip, lockFor = clip.dur * 0.86, fade = 0.09): void {
-    this.anim.play(clip, fade);
-    this.lock(lockFor);
+  /**
+   * Play an action clip and lock the actor for a fraction of however long it actually takes
+   * (a little under the whole clip, so combos link). The fraction is of the body's own clip
+   * length: a skinned body's slash and the procedural one's are not the same duration.
+   */
+  act(clip: Clip, lockFrac = 0.86, fade = 0.09): void {
+    const dur = this.anim.play(clip, fade);
+    this.lock(dur * lockFrac);
     this.hitThisSwing.clear();
   }
 
@@ -118,14 +122,14 @@ export class Actor {
     const sp = Math.hypot(this.vel.x, this.vel.z);
     this.speed01 = damp(this.speed01, clamp01(sp / this.runSpeed), 10, 1 / 60);
     if (this.speed01 < 0.02) {
-      this.anim.setLocomotion(idle, null, 0, 1 / idle.dur);
+      this.anim.setLocomotion(idle, null, 0, 1 / idle.dur, sp);
     } else if (this.speed01 < 0.5) {
       const m = this.speed01 / 0.5;
       // stride rate follows real speed so the feet don't skate
-      this.anim.setLocomotion(idle, walk, m, 0.55 + m * 0.85);
+      this.anim.setLocomotion(idle, walk, m, 0.55 + m * 0.85, sp);
     } else {
       const m = (this.speed01 - 0.5) / 0.5;
-      this.anim.setLocomotion(walk, run, m, 1.4 + m * 0.9);
+      this.anim.setLocomotion(walk, run, m, 1.4 + m * 0.9, sp);
     }
     this.anim.lean = this.speed01 * 0.7;
   }
@@ -192,13 +196,14 @@ export class Actor {
     // --- hit flash rides the accent emissive back down
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 5);
-      const m = this.fighter.rig.mats.accent;
       const f = this.flash * this.flash;
-      m.emissive.set(this.baseAccent.r + (1 - this.baseAccent.r) * f,
-                     this.baseAccent.g + (1 - this.baseAccent.g) * f,
-                     this.baseAccent.b + (1 - this.baseAccent.b) * f);
-      m.emissiveIntensity = 0.85 + f * 5;
-      m.update();
+      for (const m of this.fighter.flashMats) {
+        m.emissive.set(this.baseAccent.r + (1 - this.baseAccent.r) * f,
+                       this.baseAccent.g + (1 - this.baseAccent.g) * f,
+                       this.baseAccent.b + (1 - this.baseAccent.b) * f);
+        m.emissiveIntensity = 0.85 + f * 5;
+        m.update();
+      }
     }
   }
 
@@ -209,6 +214,7 @@ export class Actor {
    */
   private groundFeet(dt: number): void {
     const rig = this.fighter.rig;
+    if (!rig) return;   // a skinned body's feet come planted from its clips
     const s = rig.scale;
     let target = this.groundOff;
     if (this.anim.grounded) {
@@ -226,8 +232,8 @@ export class Actor {
   /** Close the left hand on the hilt when the weapon is two-handed. */
   private solveOffHand(): void {
     const grip = this.fighter.weapon.offHandGrip;
-    if (!grip || !this.anim.offHandOnWeapon) return;
     const rig = this.fighter.rig;
+    if (!grip || !rig || !this.anim.offHandOnWeapon) return;
     const s = rig.scale;
     const wt = this.fighter.weaponEntity.getWorldTransform();
     wt.transformPoint(grip, this.gripT);
@@ -251,5 +257,5 @@ export class Actor {
     this.root.enabled = v < 0.995;
   }
 
-  destroy(): void { this.trail.destroy(); this.fighter.rig.destroy(); }
+  destroy(): void { this.trail.destroy(); this.fighter.destroy(); }
 }

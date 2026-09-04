@@ -206,6 +206,23 @@ sword held like a torch. Both are fixed structurally rather than pose by pose.
   the weapon, so both hands stay on the grip through every swing. Clips where the off hand should
   let go — a flourish, a fall, a stagger — say so.
 
+**The player is a skinned character.** The procedural bodies reached the point where cosmetic
+fixes stopped paying, so the player is now a real rigged humanoid: a 65-joint skeleton with
+weighted skin, fingers, knees, elbows and feet, built offline by `tools/build-character.py` from
+public-domain packs (Quaternius' Universal rig, outfit and sword library; KayKit locomotion
+retargeted onto the same skeleton through matching T-poses — sources and licences in
+`docs/CHARACTER_SOURCES.md`). The outfit atlas is recoloured per part from the mesh's own UV
+islands, so the body is navy, the leather near-black and the belts cyan without touching the
+detail underneath. At runtime (`src/combat/skinned.ts`) the GLB's clips are blended by the same
+rules as the procedural animator — two locomotion clips by speed, one action on top that fades in
+from wherever the body was — and fire the same `swing` / `hitOpen` / `hitClose` events the combat
+director already listens for. Root motion is baked into a `RootMotion` node the actor reads back,
+so a lunge moves the character rather than sliding the mesh off its capsule. The katana hangs off a
+`WeaponSocket` entity under the right hand bone with a fixed local offset; nothing copies world
+transforms per frame. The ally and the enemies are still the procedural rig until the player has
+passed visual QA, which is deliberate: one character had to be completely right before the
+pipeline is applied to the rest.
+
 **The animation.** Poses are hand-authored keyframes (`src/combat/clips.ts`) evaluated by a small
 animator that exists mainly to avoid the two things that make procedural characters look robotic:
 
@@ -335,6 +352,12 @@ Entirely procedural Web Audio — no sound files ship with the game:
   tuned for walking, and you can find places to stand on that a physics capsule would slide off.
 - The leaf atlases are generated per session on the CPU; on very slow machines this adds about a
   second to load.
+
+- The player is a skinned character; the ally and the enemies are still the flat-shaded articulated
+  solids from the previous pass, so their limbs bend at the joint without the geometry deforming.
+  They are next in line for the same pipeline once the player has passed review.
+- The player's walk and run are KayKit clips retargeted from a much shorter rig, so the stride reads a
+  little wide; the sword clips are native to the skeleton.
 
 ## Next five upgrades that would most improve the visuals
 

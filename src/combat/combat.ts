@@ -7,6 +7,8 @@ import type { PlayerController } from '@/player/controller';
 import type { Input } from '@/player/input';
 import { Actor } from './actor';
 import { makeAlly, makeEnemy, makeWarrior, type EnemyKind } from './characters';
+import { makeSkinnedPlayer } from './skinned';
+import type { AssetBank } from '@/assets/manifest';
 import * as C from './clips';
 import { CombatFX } from './fx';
 import { clamp01, damp, DEG, rng, smoothstep } from '@/utils/math';
@@ -90,12 +92,13 @@ export class CombatDirector {
     private audio: AudioEngine,
     private hud: HUD,
     private controller: PlayerController,
+    assets?: AssetBank,
   ) {
     const g = (x: number, z: number): number => world.field.heightAt(x, z);
     this.fx = new CombatFX(ctx);
 
     this.player = new Actor(ctx, {
-      fighter: makeWarrior(ctx), team: 'player', ground: g,
+      fighter: assets?.hasModel('char/player') ? makeSkinnedPlayer(ctx, assets.model('char/player')) : makeWarrior(ctx), team: 'player', ground: g,
       trailColor: new Color(0.62, 0.90, 1.0), trailLife: 0.15, maxHealth: 100, runSpeed: 6.0,
     });
     this.player.root.enabled = false;
@@ -284,16 +287,16 @@ export class CombatDirector {
     if (live && !p.busy) {
       if (input.wasPressed('Mouse0')) {
         const clip = this.combo === 0 ? C.SLASH_1 : this.combo === 1 ? C.SLASH_2 : C.SLASH_3;
-        p.act(clip, clip.dur * (this.combo === 2 ? 0.9 : 0.68));
+        p.act(clip, this.combo === 2 ? 0.9 : 0.68);
         this.combo = (this.combo + 1) % 3;
         this.comboWindow = 0.85;
         this.softTarget();
       } else if (input.wasPressed('Mouse2')) {
-        p.act(C.HEAVY, C.HEAVY.dur * 0.92);
+        p.act(C.HEAVY, 0.92);
         this.combo = 0;
         this.softTarget();
       } else if ((input.wasPressed('Space') || input.wasPressed('KeyQ')) && this.dodgeCd <= 0 && inFight) {
-        p.act(C.DODGE, C.DODGE.dur * 0.8);
+        p.act(C.DODGE, 0.8);
         this.dodgeCd = 0.75;
         this.lungeScale = 1;
         this.fx.dust(p.pos, 10);
@@ -391,7 +394,7 @@ export class CombatDirector {
           if (dl > 0.3) { a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp); }
           else a.vel.set(0, 0, 0);
           if (mine && d < ENEMY_REACH && e.timer <= 0 && !a.busy) {
-            a.act(C.ENEMY_ATTACK, C.ENEMY_ATTACK.dur * 0.95);
+            a.act(C.ENEMY_ATTACK, 0.95);
             a.vel.set(0, 0, 0);
             e.state = 'windup';
             e.timer = C.ENEMY_ATTACK.dur;
@@ -495,7 +498,7 @@ export class CombatDirector {
       } else {
         a.vel.set(0, 0, 0);
         if (this.allyTimer <= 0) {
-          a.act(C.NUN_COMBO, C.NUN_COMBO.dur * 0.9);
+          a.act(C.NUN_COMBO, 0.9);
           this.allyTimer = 0.9 + this.rand() * 0.7;
         }
       }
@@ -511,7 +514,7 @@ export class CombatDirector {
         a.vel.set(0, 0, 0);
         a.face(this.controller.pos.x, this.controller.pos.z);
         if (this.allyTimer <= 0 && this.rand() < 0.5) {
-          a.act(C.NUN_FLOURISH, C.NUN_FLOURISH.dur * 0.95);
+          a.act(C.NUN_FLOURISH, 0.95);
         }
         if (this.allyTimer <= 0) this.allyTimer = 3.5 + this.rand() * 4;
       }
@@ -560,7 +563,7 @@ export class CombatDirector {
       if (this.player.anim.actionName === 'dodge') { this.fx.spark(mid, new Color(0.7, 0.95, 1), 6); return; }
       this.playerHurtCd = 0.7;
       this.playerHealth = Math.max(0, this.playerHealth - (src.fighter.height > 1.9 ? 22 : 13));
-      this.player.act(C.HIT_REACT, C.HIT_REACT.dur * 0.7);
+      this.player.act(C.HIT_REACT, 0.7);
       this.fx.spark(mid, new Color(1.0, 0.5, 0.5), 14);
       this.audio.playCombat('hurt', this.player.pos);
       this.hitStop = 0.05;
@@ -584,12 +587,12 @@ export class CombatDirector {
     if (killed) {
       e.state = 'dying';
       e.dieT = 0;
-      e.actor.act(C.DEATH, C.DEATH.dur);
+      e.actor.act(C.DEATH, 1);
       e.actor.hitOpen = false;
       this.fx.dissolveBurst(e.actor.chest, e.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.65, 0.35, 0.95));
       this.audio.playCombat('defeat', e.actor.pos);
     } else if (e.state !== 'windup' || this.rand() < 0.5) {
-      e.actor.act(C.STAGGER, C.STAGGER.dur * 0.8);
+      e.actor.act(C.STAGGER, 0.8);
       e.state = 'stagger';
       e.timer = C.STAGGER.dur * 0.8;
     }
@@ -671,7 +674,7 @@ export class CombatDirector {
     en.state = 'idle';
     en.timer = 9999;
 
-    const loop = (a: Actor, clip: typeof C.SLASH_1): void => { a.act({ ...clip, loop: true }, 0.05, 0.05); };
+    const loop = (a: Actor, clip: typeof C.SLASH_1): void => { a.act({ ...clip, loop: true }, 0, 0.05); };
     if (which === 'slash') { loop(this.player, C.SLASH_1); loop(this.ally, C.NUN_COMBO); loop(en.actor, C.ENEMY_ATTACK); }
     else if (which === 'heavy') { loop(this.player, C.HEAVY); loop(this.ally, C.NUN_FLOURISH); loop(en.actor, C.ENEMY_ATTACK); }
     else if (which === 'combo') { loop(this.player, C.SLASH_3); loop(this.ally, C.NUN_COMBO); loop(en.actor, C.STAGGER); }
@@ -714,11 +717,11 @@ export class CombatDirector {
   debugAttack(kind: 'light' | 'heavy' | 'dodge'): boolean {
     const p = this.player;
     if (p.busy) return false;
-    if (kind === 'heavy') { p.act(C.HEAVY, C.HEAVY.dur * 0.92); this.combo = 0; }
-    else if (kind === 'dodge') { p.act(C.DODGE, C.DODGE.dur * 0.8); this.lungeScale = 1; this.fx.dust(p.pos, 10); this.softTargetFace(); return true; }
+    if (kind === 'heavy') { p.act(C.HEAVY, 0.92); this.combo = 0; }
+    else if (kind === 'dodge') { p.act(C.DODGE, 0.8); this.lungeScale = 1; this.fx.dust(p.pos, 10); this.softTargetFace(); return true; }
     else {
       const clip = this.combo === 0 ? C.SLASH_1 : this.combo === 1 ? C.SLASH_2 : C.SLASH_3;
-      p.act(clip, clip.dur * (this.combo === 2 ? 0.9 : 0.68));
+      p.act(clip, this.combo === 2 ? 0.9 : 0.68);
       this.combo = (this.combo + 1) % 3;
       this.comboWindow = 0.85;
     }

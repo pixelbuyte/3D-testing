@@ -1,4 +1,5 @@
-import { Color, Entity, Vec3 } from 'playcanvas';
+import { Color, Entity, StandardMaterial, Vec3 } from 'playcanvas';
+import { Animator, type FighterAnimator } from './anim';
 import type { EngineContext } from '@/core/engine';
 import { appendData, boxData, cylinderData, emptyData, sphereData, transformData, type MeshData } from '@/utils/geometry';
 import { Rig, type Joint } from './rig';
@@ -17,13 +18,31 @@ import { buildKatana, buildNunchucks, type WeaponBuild } from './weapons';
  */
 
 export interface Fighter {
-  rig: Rig;
+  /** the entity the actor positions and turns */
+  root: Entity;
+  scale: number;
+  height: number;
   weapon: WeaponBuild;
   /** the entity the trail samples, and that hit sweeps are measured from */
   weaponEntity: Entity;
   /** nunchucks only: the spinning half */
   freeChuck?: Entity;
-  height: number;
+  animator: FighterAnimator;
+  /** materials that flash white when a hit lands */
+  flashMats: StandardMaterial[];
+  chest(): Vec3;
+  /** the procedural rig, when the body is one: feet grounding and the grip IK live in the actor */
+  rig?: Rig;
+  destroy(): void;
+}
+
+/** A Fighter around a procedural rig. */
+function fromRig(rig: Rig, weapon: WeaponBuild, height: number, extra: Partial<Fighter> = {}): Fighter {
+  return {
+    rig, root: rig.root, scale: rig.scale, height, weapon, weaponEntity: weapon.entity,
+    animator: new Animator(rig), flashMats: [rig.mats.accent],
+    chest: () => rig.jointPos('chest'), destroy: () => rig.destroy(), ...extra,
+  };
 }
 
 // ------------------------------------------------------------ shared pieces
@@ -169,7 +188,7 @@ export function makeWarrior(ctx: EngineContext): Fighter {
   katana.entity.setLocalEulerAngles(-112, 0, 0);
   rig.joints.handR.addChild(katana.entity);
 
-  return { rig, weapon: katana, weaponEntity: katana.entity, height: 1.80 };
+  return fromRig(rig, katana, 1.80);
 }
 
 // ------------------------------------------------------------------- ally
@@ -217,7 +236,7 @@ export function makeAlly(ctx: EngineContext): Fighter {
   chucks.entity.setLocalEulerAngles(-100, 0, 0);
   rig.joints.handR.addChild(chucks.entity);
 
-  return { rig, weapon: chucks, weaponEntity: chucks.entity, freeChuck: chucks.free, height: 1.72 };
+  return fromRig(rig, chucks, 1.72, { freeChuck: chucks.free });
 }
 
 // ------------------------------------------------------------------ enemy
@@ -292,12 +311,8 @@ export function makeEnemy(ctx: EngineContext, kind: EnemyKind, seedTint = 0): Fi
   rig.joints.handR.addChild(holder);
   rig.attachTo(holder, w, bladeMat, 'enemy-blade');
 
-  return {
-    rig,
-    weapon: { entity: holder, base: new Vec3(0, 0.12 * s, 0), tip: new Vec3(0, (0.10 + len) * s, 0) },
-    weaponEntity: holder,
-    height: 1.80 * scale,
-  };
+  const blade: WeaponBuild = { entity: holder, base: new Vec3(0, 0.12 * s, 0), tip: new Vec3(0, (0.10 + len) * s, 0) };
+  return fromRig(rig, blade, 1.80 * scale);
 }
 
 export type { MeshData };

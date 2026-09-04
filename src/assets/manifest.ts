@@ -29,6 +29,9 @@ export const MODELS = [
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 
+/** skinned characters built by tools/build-character.py: assets/characters/<id>.glb */
+export const CHARACTERS = ['player'] as const;
+
 export const SKY_HDR = 'kloppenheim_06_2k.hdr';
 
 export interface TexSet { diff: Texture; nor: Texture; arm: Texture; }
@@ -57,6 +60,11 @@ export class AssetBank {
     for (const id of MODELS) {
       const a = new Asset(id, 'container', { url: `assets/models/${id}.glb` });
       this.models.set(id, a);
+      list.push(a);
+    }
+    for (const id of CHARACTERS) {
+      const a = new Asset(`char/${id}`, 'container', { url: `assets/characters/${id}.glb` });
+      this.models.set(`char/${id}`, a);
       list.push(a);
     }
     this.hdr = new Asset('sky-hdr', 'texture', { url: `assets/hdri/${SKY_HDR}` }, { mipmaps: false });

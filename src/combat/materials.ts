@@ -107,6 +107,16 @@ function ensureTextures(ctx: EngineContext): void {
 
 // ------------------------------------------------------------- the material
 
+/** Put the fresnel rim on a material that already exists (a glTF import, say). */
+export function applyRim(m: StandardMaterial, rim: [number, number, number], strength: number, power: number): void {
+  m.shaderChunksVersion = '2.8';
+  const g = m.getShaderChunks(SHADERLANGUAGE_GLSL), w = m.getShaderChunks(SHADERLANGUAGE_WGSL);
+  g.set('litUserDeclarationPS', rimDeclGLSL); g.set('emissivePS', rimEmissiveGLSL);
+  w.set('litUserDeclarationPS', rimDeclWGSL); w.set('emissivePS', rimEmissiveWGSL);
+  m.setParameter('uRimColor', rim);
+  m.setParameter('uRimParams', [strength, power, 0, 0]);
+}
+
 export function characterMaterial(ctx: EngineContext, name: string, c: Color, o: CharacterMaterialOpts): StandardMaterial {
   ensureTextures(ctx);
   const m = new StandardMaterial();

@@ -46,7 +46,7 @@ export class Game {
 
     this.npcs = new NpcDirector(ctx, world, this.audio, this.hud);
 
-    this.combat = new CombatDirector(ctx, world, this.audio, this.hud, this.player);
+    this.combat = new CombatDirector(ctx, world, this.audio, this.hud, this.player, assets);
 
     this.hero = new HeroProp(ctx, assets, world.shrine.heroSlot);
     void this.hero.set({ kind: 'builtin', id: settings.get('heroModel') });

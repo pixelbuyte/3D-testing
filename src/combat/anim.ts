@@ -58,7 +58,29 @@ function blankPose(): Record<Joint, [number, number, number]> {
   return p;
 }
 
-export class Animator {
+/** What a body's animator must offer the actor and the combat director, whatever drives the bones. */
+export interface FighterAnimator {
+  breathe: number;
+  lean: number;
+  leanSide: number;
+  lookYaw: number;
+  lookPitch: number;
+  setEventHandler(fn: (name: string) => void): void;
+  /** `speed` is the actor's real ground speed in m/s, for bodies whose clips have a natural stride */
+  setLocomotion(a: Clip, b: Clip | null, mix: number, rate?: number, speed?: number): void;
+  /** start a one-shot; returns the duration it will actually take */
+  play(clip: Clip, fadeDur?: number): number;
+  stopAction(): void;
+  readonly actionName: string | null;
+  readonly actionProgress: number;
+  readonly busy: boolean;
+  readonly grounded: boolean;
+  readonly offHandOnWeapon: boolean;
+  consumeLunge(dt: number): number;
+  update(dt: number): void;
+}
+
+export class Animator implements FighterAnimator {
   private cur: Record<Joint, [number, number, number]> = blankPose();
   private tmp: Record<Joint, [number, number, number]> = blankPose();
   private from: Record<Joint, [number, number, number]> = blankPose();
@@ -93,7 +115,7 @@ export class Animator {
   setEventHandler(fn: (name: string) => void): void { this.onEvent = fn; }
 
   /** Blend two locomotion clips continuously. `mix` 0 = a, 1 = b. */
-  setLocomotion(a: Clip, b: Clip | null, mix: number, rate = 1): void {
+  setLocomotion(a: Clip, b: Clip | null, mix: number, rate = 1, _speed = 0): void {
     if (this.locoA !== a || this.locoB !== b) {
       // keep the phase when swapping clips so feet don't teleport mid-stride
       this.locoA = a; this.locoB = b;
@@ -103,13 +125,14 @@ export class Animator {
   }
 
   /** Start a one-shot clip, cross-fading from wherever the body currently is. */
-  play(clip: Clip, fadeDur = 0.1): void {
+  play(clip: Clip, fadeDur = 0.1): number {
     for (const j of JOINTS) { const c = this.cur[j], f = this.from[j]; f[0] = c[0]; f[1] = c[1]; f[2] = c[2]; }
     this.action = clip;
     this.actionT = 0;
     this.fade = 0;
     this.fadeDur = Math.max(0.001, fadeDur);
     this.firedTo = -1;
+    return clip.dur;
   }
 
   stopAction(): void { this.action = null; }
