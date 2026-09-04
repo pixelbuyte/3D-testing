@@ -95,16 +95,18 @@ export function treeMaterials(assets: AssetBank, atlasBroad: LeafAtlas, atlasCon
   const leafMat = (atlas: LeafAtlas, name: string, tint: Color): StandardMaterial => {
     const m = pbrFromTextures(atlas.diffuse, atlas.normal, null, name, { tint, wet: 0.3, wetTop: 0.5, twoSided: true, gloss: 0.55, chunks: wind });
     m.opacityMap = atlas.diffuse as Texture; m.opacityMapChannel = 'a';
-    m.alphaTest = 0.52; m.blendType = BLEND_NONE;
+    m.alphaTest = 0.40; m.blendType = BLEND_NONE;
     m.useMetalness = true; m.metalness = 0; m.gloss = 0.22;
     m.diffuseMapTiling.set(1, 1); m.normalMapTiling.set(1, 1); m.bumpiness = 0.6;
-    // subtle translucency look: lift shadowed side via ambient occlusion off + emissive tint
-    m.emissive = tint.clone().mulScalar(0.012);
+    // Cheap stand-in for leaf translucency: a constant emissive floor keeps backlit canopies from
+    // collapsing to pure black silhouettes, which is what a real subsurface term would prevent.
+    m.emissive = tint.clone().mulScalar(0.30);
+    m.emissiveIntensity = 1.0;
     m.update();
     return m;
   };
-  const leavesBroad = leafMat(atlasBroad, 'leaves-broad', new Color(0.34, 0.44, 0.30));
-  const leavesConifer = leafMat(atlasConifer, 'leaves-conifer', new Color(0.26, 0.36, 0.28));
+  const leavesBroad = leafMat(atlasBroad, 'leaves-broad', new Color(0.46, 0.56, 0.38));
+  const leavesConifer = leafMat(atlasConifer, 'leaves-conifer', new Color(0.36, 0.46, 0.34));
   return { bark, barkB, leavesBroad, leavesConifer };
 }
 

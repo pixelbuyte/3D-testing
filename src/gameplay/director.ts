@@ -62,6 +62,7 @@ export class Director {
     mat.cull = 0;
     mat.opacityMap = whiteTexture(ctx.device);
     mat.opacityMapChannel = 'a';
+    mat.opacity = 0.42;
     mat.shaderChunksVersion = '2.8';
     const g = mat.getShaderChunks(SHADERLANGUAGE_GLSL), w = mat.getShaderChunks(SHADERLANGUAGE_WGSL);
     for (const [k, v] of Object.entries(stoneGLSL)) g.set(k, v);
@@ -70,7 +71,7 @@ export class Director {
     mat.setParameter('uStoneColor', [0.65, 0.95, 1.0]);
     mat.update();
     this.beamMat = mat;
-    const mesh = createMesh(ctx.device, cylinderData(2.6, 5.0, 220, 24, 0.05, false));
+    const mesh = createMesh(ctx.device, cylinderData(1.15, 2.6, 220, 22, 0.05, false));
     const mi = new MeshInstance(mesh, mat);
     mi.castShadow = false; mi.receiveShadow = false; mi.cull = false;
     this.beam = new Entity('beam');
@@ -215,8 +216,8 @@ export class Director {
       this.beamAmount = damp(this.beamAmount, 1, 0.35, dt);
       const b = easeOutCubic(this.beamAmount);
       this.beamParams[0] = this.time;
-      this.beamParams[1] = b * 2.6;
-      this.beamParams[2] = 0.85;
+      this.beamParams[1] = b * 1.5;
+      this.beamParams[2] = 0.10;   // near-uniform column: the crystal banding reads as rings at this scale
       this.beamParams[3] = Math.max(0, 1 - this.beamAmount * 2);
       this.beamMat.setParameter('uStone', this.beamParams);
       const s = 0.4 + b * 0.9;

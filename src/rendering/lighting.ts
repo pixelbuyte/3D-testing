@@ -21,12 +21,12 @@ export const MOODS: Record<'dusk' | 'awakened' | 'opened' | 'finale', Mood> = {
   dusk: {
     sunColor: new Color(1.0, 0.76, 0.58), sunIntensity: 2.5, skyIntensity: 0.24, exposure: 0.72,
     fogColor: new Color(0.125, 0.160, 0.215), fogSunColor: new Color(0.95, 0.52, 0.30), fogDensity: 0.0175, fogHeightFalloff: 0.085,
-    ambient: new Color(0.028, 0.042, 0.068),
+    ambient: new Color(0.045, 0.065, 0.098),
   },
   awakened: {
     sunColor: new Color(1.0, 0.74, 0.56), sunIntensity: 2.3, skyIntensity: 0.24, exposure: 0.74,
     fogColor: new Color(0.120, 0.160, 0.225), fogSunColor: new Color(0.95, 0.54, 0.32), fogDensity: 0.0170, fogHeightFalloff: 0.090,
-    ambient: new Color(0.030, 0.047, 0.076),
+    ambient: new Color(0.048, 0.070, 0.105),
   },
   opened: {
     sunColor: new Color(1.0, 0.72, 0.55), sunIntensity: 2.0, skyIntensity: 0.23, exposure: 0.76,
@@ -108,7 +108,7 @@ export class Lighting {
     // --- cool sky fill from above/behind (no shadows) — keeps shadowed areas from going dead
     this.fill = new Entity('skyfill');
     this.fill.addComponent('light', {
-      type: 'directional', color: new Color(0.34, 0.50, 0.82), intensity: 0.95, castShadows: false, affectSpecularity: false,
+      type: 'directional', color: new Color(0.34, 0.50, 0.82), intensity: 1.5, castShadows: false, affectSpecularity: false,
     });
     this.fill.lookAt(new Vec3(-0.25, -1, -0.55));
     app.root.addChild(this.fill);

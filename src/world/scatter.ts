@@ -209,9 +209,9 @@ export class Scatter {
     // with a handful of hero trees inside for foreground framing.
     const treeAccept = (x: number, z: number, slope: number, built: number): number => {
       if (slope > 0.55) return 0;
-      if (this.pathDist(x, z) < 4.5) return 0;
+      if (this.pathDist(x, z) < 9.5) return 0;   // keep the walked corridor and its sightlines clear
       if (this.poolDist(x, z) < 2) return 0;
-      if (this.stoneDist(x, z) < 7) return 0;
+      if (this.stoneDist(x, z) < 10) return 0;
       if (built > 0.35) return 0;
       const r = Math.hypot(x, z);
       const density = smoothstep(16, 46, r);              // clearing around the shrine complex
