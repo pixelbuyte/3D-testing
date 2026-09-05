@@ -3,7 +3,7 @@ import type { EngineContext } from '@/core/engine';
 import type { Fighter } from './characters';
 import type { Clip, FighterAnimator } from './anim';
 import { WeaponTrail } from './weapons';
-import { clamp01, damp, dampAngle, DEG } from '@/utils/math';
+import { clamp01, damp, dampAngle, DEG, wrapAngle } from '@/utils/math';
 import { COMBAT } from './config';
 import type { BladeSweep, Capsule } from './hitdetect';
 
@@ -49,6 +49,11 @@ export class Actor {
   hitTail = false;
   /** who this attack has already hit, so one swing cannot hit the same target twice */
   readonly hitThisSwing = new Set<Actor>();
+  /** every act() gets a fresh id; a damage event carries it so one attack can be proven to land once per target */
+  attackId = 0;
+  private static nextAttackId = 1;
+  /** a short label for the debug counters */
+  id = '?';
   private trail: WeaponTrail;
   private trailWant = 0;
   private ground: (x: number, z: number) => number;
@@ -153,10 +158,21 @@ export class Actor {
     const dur = this.anim.play(clip, fade);
     this.lock(dur * lockFrac);
     this.hitThisSwing.clear();
+    this.attackId = Actor.nextAttackId++;
     // an interrupting action closes whatever damage window the previous one left open
     this.hitOpen = false;
     this.hitTail = false;
     return dur;
+  }
+
+  /**
+   * The clip's damage-window events, in one place because pose() depends on their exact
+   * semantics: the window opens with nobody hit yet, and the sub-step that closes it still sweeps.
+   */
+  windowEvent(name: string): boolean {
+    if (name === 'hitOpen') { this.hitOpen = true; this.hitThisSwing.clear(); return true; }
+    if (name === 'hitClose') { this.hitOpen = false; this.hitTail = true; return true; }
+    return false;
   }
 
   setTrail(v: number): void { this.trailWant = v; }
@@ -286,8 +302,7 @@ export class Actor {
     this.sweepCount = 0;
     if (this.sampleCount > 1) {
       const scale = this.root.getLocalScale();
-      let dyaw = this.yaw - this.prevPlacedYaw;
-      dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+      const dyaw = wrapAngle(this.yaw - this.prevPlacedYaw);
       let prev = this.sample(0);
       let prevIsPlaced = false;
       for (let i = 1; i < this.sampleCount; i++) {

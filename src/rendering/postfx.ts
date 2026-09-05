@@ -82,7 +82,9 @@ export class PostFX {
     f.bloom.intensity = (settings.get('bloom') ? 0.026 : 0) * (1 + this.pulse * 6);
     this.pulse = damp(this.pulse, 0, 1.5, dt);
 
-    // adaptive resolution: hold ~60 fps by trading render scale in 5% steps
+    // adaptive resolution: trade render scale in 5% steps to stay above ~45 fps, and no lower than
+    // 85% — below that the sharp dark fighters go blocky long before the fogged scenery does, which
+    // read as "pixelated characters" on a mid-range GPU while the world still looked fine
     if (settings.get('dynamicResolution')) {
       this.frameTimes.push(dt);
       if (this.frameTimes.length >= 45) {
@@ -90,8 +92,8 @@ export class PostFX {
         const median = sorted[sorted.length >> 1];
         this.frameTimes.length = 0;
         const before = this.dynamicScale;
-        if (median > 1 / 50) this.dynamicScale = Math.max(0.6, this.dynamicScale - 0.05);
-        else if (median < 1 / 70) this.dynamicScale = Math.min(1, this.dynamicScale + 0.05);
+        if (median > 1 / 45) this.dynamicScale = Math.max(0.85, this.dynamicScale - 0.05);
+        else if (median < 1 / 62) this.dynamicScale = Math.min(1, this.dynamicScale + 0.05);
         if (before !== this.dynamicScale) { f.rendering.renderTargetScale = settings.get('renderScale') * this.dynamicScale; f.update(); }
       }
     } else if (this.dynamicScale !== 1) {

@@ -85,6 +85,7 @@ export class Game {
       setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       pause: (on: boolean) => { this.paused = on; },
+      hits: () => this.combat.hitLog,
       world: this.world,
     });
 
@@ -183,7 +184,9 @@ export class Game {
       const st = this.stats() as Record<string, unknown>;
       this.hud.setDebugStats([
         `fps ${st.fps}  dt ${st.dt}  draw ${st.drawCalls}  tris ${st.triangles}`,
-        `player hp ${st.health}  act ${st.act}  lock ${st.lock}  hitbox ${st.hitOpen ? 'ACTIVE' : '-'}  iframes ${st.iframes}`,
+        `player hp ${st.health}  act ${st.act}  lock ${st.lock}  iframes ${st.iframes}`,
+        `attack #${st.attackId}  frames ${String(st.phase).toUpperCase()}  window ${st.hitOpen ? 'OPEN' : 'closed'}`,
+        `hits ${st.hits || '-'}`,
         `enemies ${st.enemies}  nearest ${st.nearest}  combo ${st.combo}`,
         `foes ${st.foes}`,
         `F1 panel  F2 hitboxes`,

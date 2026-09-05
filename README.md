@@ -161,10 +161,12 @@ The scope is fixed on purpose: **one player, one ally, three staged encounters o
 enemies**. There are no levels, no loot, no skill trees — the effort went into how a swing feels.
 
 <p align="center">
-  <img src="docs/shots/combat-duel.jpg" width="49%" alt="The warrior mid-slash with a katana trail, the nunchuck ally beside them, masked enemies closing">
-  <img src="docs/shots/combat-melee.jpg" width="49%" alt="A three-enemy melee in the courtyard">
-  <img src="docs/shots/combat-cast.jpg" width="49%" alt="The three fighters side by side: warrior, ally, shadow warrior">
-  <img src="docs/shots/combat-elite.jpg" width="49%" alt="The horned elite at the awakened shrine">
+  <img src="docs/shots/combat-fight.gif" width="98%" alt="The 1v1 from the gameplay camera: the warrior closes on the orange enemy, trades cuts and finishes it">
+</p>
+<p align="center">
+  <img src="docs/shots/combat-duel.jpg" width="49%" alt="The warrior mid-heavy, blade low, lunging at the orange enemy">
+  <img src="docs/shots/combat-enemy.jpg" width="49%" alt="The orange enemy committing to a cut while the warrior squares up">
+  <img src="docs/shots/combat-overlay.jpg" width="98%" alt="F2 overlay from the side: hurt capsules, the blade's sweep chain and the contact point on the frame a light attack connects">
 </p>
 
 **The cast.** A katana warrior (you, navy with cyan wraps), a nunchuck ally in black who joins

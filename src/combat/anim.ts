@@ -57,6 +57,8 @@ export interface FighterAnimator {
   readonly offHandOnWeapon: boolean;
   /** an attack is playing and its damage window has not closed yet: the blade wants fine sampling */
   readonly sweeping: boolean;
+  /** where the current attack is on its timeline: anticipation, active, recovery, or '-' */
+  readonly phase: 'anticipation' | 'active' | 'recovery' | '-';
   consumeLunge(dt: number): number;
   update(dt: number): void;
 }

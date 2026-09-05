@@ -30,6 +30,10 @@ until the 1v1 passes its checklist, and that checklist was completed only at the
   heavy 60 ms, hurt 45 ms) → camera impulse.
 - **Debug mode**: F1 stats panel, F2 hitbox overlay (capsules, sweep chains green/red, contact
   points). Both off in normal play.
+- **Sweep precision counters**: every attack has an id, every damage event is logged with
+  attacker, target and amount, the animator reports anticipation / active / recovery, and the F1
+  panel shows the attack id, frame phase, window state and the last damage events. The hit lab
+  asserts that no attack id damages the same target twice.
 - **Test tooling**: `__ECHOES.arena(hold, dist, place)`, `simulate(sec, step, move)` (steps the
   controller and the fight together with a scripted movement intent), `trace(on)`, `setYaw`,
   `enemyHealth()` with stable ids, `preview('hit')`.
@@ -44,19 +48,100 @@ hitdetect,skinned}.ts` (rig.ts and ik.ts deleted), `src/core/debug.ts`, `src/gam
 
 ## Bugs fixed this session
 
-TBD_BUGS
+- **"Pixelated" characters, two causes.** (1) The recolour masks stopped exactly at the UV
+  island edges, so the gutters between islands kept the source atlas's pale colour; bilinear
+  filtering and every mip level read a texel or two past the edge and put a bright speckled
+  fringe on every panel of the outfit. The tint masks are now grown into the gutters before
+  tinting (nearest-part propagation in the build tool), the base is written at JPEG quality 94 and
+  the cloth normal map is softened, so the outfit reads as clean colour blocks. (2) Adaptive
+  resolution on the high and medium presets dropped the render scale to 60% (48% effective on
+  medium) whenever a frame took over 20 ms, which pixelates the sharp dark fighters while fog hides
+  it on the scenery. The floor is now 85%, the medium preset starts at 90%, and the controller only
+  steps down below ~45 fps and back up above ~62 fps.
+- **Hits were frame-rate dependent.** The swept blade was rebuilt from two poses a frame apart; at
+  1/20 s the second combo hit was lost and at 1/10 s nothing landed. Fixed by sampling the
+  animation at a fixed rate while a window is pending (see Completed). Verified at 1/60 … 1/10.
+- **Line of sight stepped over thin geometry.** The ray march sampled every 0.5 m from 0.5 m out,
+  so a post or railing under half a metre could sit between samples. Replaced with an exact
+  segment test against the colliders.
+- **Root motion landed a frame early.** The lunge was consumed before the pose that produced it;
+  `pose()` / `finish()` are now split around the controller's integration.
+- **A damage window could stay open** after an interrupting action, and the frame on which
+  `hitClose` fired was never swept (the blade's last centimetres of travel). `act()` closes the
+  window; a tail flag keeps the closing sub-step.
+- **The hit flash lit every fighter** because instances shared the container's materials; they are
+  cloned per body now.
+- **The 1v1 arena spawned inside a staged encounter's trigger** (three AI enemies and the ally
+  joined the "held" test); a hit turned the held dummy into a live enemy; the trace showed near
+  misses at 0.53 m because the sweep lerped the tip along the chord inside the swing arc. All three
+  fixed (encounters disarmed, held flag honoured in every state, arc-aware sweep).
+- **The frame-rate test compared enemies by array index**, which shifted when a body was reaped;
+  `enemyHealth()` returns stable ids.
+- **Hit reactions:** the KayKit flinch retargets with both arms locked out sideways; the UAL2
+  knockback is on the ground within 0.2 s. Replaced by the additive recoil.
+- Both local servers died during the usage pause; three concurrent SwiftShader captures timed each
+  other out (captures now run one at a time).
 
 ## Test results
 
-TBD_TESTS
+All logic tests run headless (Chromium on SwiftShader) by stepping the game loop through
+`__ECHOES.simulate`, so they are independent of the render rate; each is run at several fixed
+step sizes to prove the combat maths does not change with the frame rate.
+
+| Lab | What it does | Result |
+| --- | --- | --- |
+| Hit lab | Held enemy at 1.6 m and 2.3 m; light ×3, heavy, light ×3; then the same with the back turned. Steps 1/60, 1/30, 1/20, 1/10 s. | Every case: 12 / 14 / 18 then the killing heavy (21 left), nothing after death, nothing with the back turned, no NaN. Identical at all four step sizes. |
+| AI duel | Enemy fights back; scripted swings and dodges. Steps 1/60, 1/20 s. | Enemy dies at 4.9 s / 12.9 s; player takes 12 or 14 per enemy hit (1 hit / 3 hits); states seen idle, alert, approach, combatIdle, attack, recover, hit, stagger, dying; no state held > 8 s; 0 attacks after death; no NaN. |
+| Movement lab | Sprint in from 4.5 m and swing while still running; strafe under enemy attacks for 8 s; attack while the yaw sweeps 50°; the same with the back turned. Steps 1/60, 1/20 s. | Run-in swing lands 12 once at both steps; strafing player takes 12 / 14 with ≥ 2.1 s between hits and keeps moving every step; turning swing lands 12 once; back-turned turning swing lands 0; no NaN. |
+| Wall lab | The 1.1 m stone lantern pillar between the fighters at 2.05 m; the same spacing on open stone (control); a 0.11 m torii post between them. Steps 1/60, 1/20 s. | Through the pillar: 0 / 0 / 0 / 0 at both steps. Open control: 12 / 14 / 18 / 21. Thin post: the swings whose contact point falls beside the post land, the ones behind it are blocked (12 / 0 / 18 / 28 at 1/60, 12 / 0 / 18 / 0 at 1/20) — the blade genuinely passes the post on one side, so the per-swing outcome depends on centimetres of contact position. |
+| Slope lab | The steepest walkable patch within 45 m of the courtyard (17°, at x 45 z −24.5); enemy uphill, then downhill. Steps 1/60, 1/20 s. | 12 / 14 / 18 / 21 in all four cases; no NaN. |
+| Staged encounters | The three encounters simulated end to end. | Still clear (64 / 22 / 52 swings). |
+| Gameplay-camera fight capture | The AI 1v1 from the real third-person camera, one frame per 0.15 s, scripted player who closes, swings in reach and dodges on the enemy's commit. | Enemy dead by frame 12; player finishes on 62 HP; sword stays in the hand, feet on the stone, hit flash on the struck body only (`docs/shots/combat-fight.gif`). |
+| Overlay capture | F2 overlay from the side, loop frozen, a light attack stepped to fixed phases. | Four fixed phases of a light attack against a held enemy at 1.7 m: before the window (no chain), window open (green chain, no contact, enemy 65 HP), the contact frame (chain red at the contact, enemy 65 → 53 HP and in `hit`, hit flash on that body only; `docs/shots/combat-overlay.jpg`), and after (window closed, no chain). Draw calls 3,153 in that view. |
+| Hit-reaction sheet | `preview('hit')` with the loop frozen, stepped to fixed phases of the recoil. | At 0.06 s all three bodies lean back with the head turned and the enemy (stagger, strength 1.7) further than the player and ally (light hit); the feet stay planted and the sword stays in the hand. |
+
+Checklist from the brief: idle→attack ✓, run→attack ✓, three-hit combo ✓, heavy ✓, dodge (0.25 s
+i-frames honoured; a mistimed dodge is hit, as intended) ✓, attack after dodge ✓ (duel), hit
+during movement ✓, attack while turning ✓, uneven terrain ✓, walls ✓ (thick), kill mid-animation ✓
+(the enemy dies on the frame the killing blow lands, whatever it was doing, and its window and
+token are cleared), sword attached ✓, feet grounded ✓ (heightfield-placed; no foot IK on slopes
+yet), no double damage ✓, no damage through walls ✓, no NaN ✓, no animation locks ✓ (no state held
+over 8 s in any duel), dead enemy cannot attack ✓, FPS does not change combat math ✓.
 
 ## Remaining bugs and known limitations
 
-TBD_REMAINING
+- **P2 — thin posts are a coin flip.** A blade contact whose point falls beside a 0.11 m torii post
+  is not blocked (the blade genuinely passes on that side), so against very thin geometry the
+  per-swing outcome depends on centimetres of contact position and can differ between step sizes.
+  Thick walls are consistent. A "blade path must also be clear" test (sweep the blade segment
+  against colliders, not only the chest→contact ray) would close it.
+- **P2 — enemies are tested at last frame's positions.** The player's sweep runs before the
+  enemies move for the frame, so a running enemy is up to one frame (≤ 7 cm at 60 Hz) from where
+  the sweep sees it. Harmless at the capsule sizes used, but it is a known asymmetry.
+- **P3 — a sprinting player can shove a held enemy.** Separation is a rate, so a player running
+  into a stationary body pushes it along; in a live fight the enemy is moving anyway.
+- **P3 — no FPS measurement on real hardware.** The container renders through SwiftShader at about
+  one frame per second, so the GPU frame rate cannot be measured here; draw calls and triangle
+  counts are reported instead.
+- **Not started (by design):** multiple enemies and the ally on the new pipeline in a live fight
+  (the ally spawns with the old clip tables on the skinned body and is benched by the arena), a
+  parry/block, perfect-dodge slow motion, attack telegraphs.
 
 ## Performance
 
-TBD_PERF
+The container renders through SwiftShader at roughly one frame per second, so a GPU frame rate
+cannot be measured here; the numbers below are what can be.
+
+| Measure | Value |
+| --- | --- |
+| Production bundle | `index` 242.9 kB (76.8 kB gzip), PlayCanvas chunk 1,408 kB (369 kB gzip), CSS 8.9 kB |
+| Character GLBs | player 4.94 MB, enemy 5.02 MB, ally 5.11 MB (19 clips each) |
+| Draw calls, medium preset, courtyard 1v1 | 3,145 per frame (whole scene; the fighters are a handful each) |
+| Combat CPU | Blade sampling costs at most 12 animation sub-steps per attacking fighter per frame, only while a window is pending; the sweep itself is ≤ 48 segment tests per sample pair per target. Not measurable on this CPU-rendered path; expected well under 0.5 ms for five fighters on a desktop. |
+| Logic stepping | 20,000 fixed steps per `simulate()` call cap; the full lab batch runs in about eight minutes of wall clock, almost all of it page load on SwiftShader. |
+
+Real-hardware profiling (target 60 FPS, 45+ acceptable) is the first item of the next session's
+feel pass.
 
 ## Controls
 
@@ -73,4 +158,19 @@ TBD_PERF
 
 ## NEXT_SESSION_PLAN
 
-TBD_PLAN
+1. **Multi-enemy V1 (2–3 orange enemies):** the attack token and ring slots already exist; add a
+   second and third enemy to the courtyard encounter, tune `holdRange` / slot spacing so the ring
+   reads, and extend the duel lab to assert one attacker at a time and no overlapping bodies.
+2. **Nunchuck ally on the same pipeline in a live fight:** give the ally the Follow → CombatIdle →
+   ApproachTarget → Attack → Recover → Hit machine, make it pick the enemy the player is not
+   fighting, and prove it never damages the player (its sweeps target only enemies; add the
+   assertion to the lab).
+3. **Blade-path occlusion:** sweep the blade chain itself against colliders so a thin post between
+   fighters blocks the cut wherever the contact would fall, and add the wall lab's post case as a
+   hard assertion.
+4. **Feel pass on real hardware:** measure frame time on a GPU, then tune hit-stop (the brief's
+   30–45 / 50–75 ms bands), spark size, impact sound layering and the camera impulse against the
+   fight capture; add an attack telegraph flash on the enemy's wind-up.
+5. **Remaining visual polish:** foot planting on slopes for the skinned bodies (IK on the ankle
+   only), the enemy's hood clipping at the shoulders in the recoil, and new README plates from the
+   gameplay camera replacing the procedural-character shots.

@@ -28,7 +28,7 @@ import struct
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 # ----------------------------------------------------------------------------- glTF reading
 
@@ -221,10 +221,10 @@ class Writer:
         self.g['accessors'].append(a)
         return len(self.g['accessors']) - 1
 
-    def image(self, pil, name, fmt='PNG'):
+    def image(self, pil, name, fmt='PNG', quality=90):
         b = io.BytesIO()
         if fmt == 'JPEG':
-            pil.convert('RGB').save(b, fmt, quality=90, optimize=True)
+            pil.convert('RGB').save(b, fmt, quality=quality, optimize=True)
         else:
             pil.save(b, fmt, optimize=True)
         bv = self.view(b.getvalue())
@@ -268,6 +268,30 @@ def uv_mask(gl, mesh_names, size, prim_filter=None):
                 pts = [(float(uv[i][0]) * size, float(uv[i][1]) * size) for i in tri]
                 d.polygon(pts, fill=255, outline=255)
     return mask
+
+
+def pad_masks(masks, rounds=48):
+    """
+    Grow each part's mask outward into the atlas's padding so that every pixel belongs to the
+    nearest part. The tint has to cover the gutters between UV islands too: bilinear filtering and
+    every mip level read a texel or two past the island edge, and an untinted gutter shows up as
+    a bright speckled seam on every panel of the outfit.
+    """
+    size = masks[0].size[0]
+    label = np.full((size, size), -1, dtype=np.int16)
+    arrs = [np.array(m) > 127 for m in masks]
+    for i, a in enumerate(arrs):
+        label[a & (label < 0)] = i
+    for _ in range(rounds):
+        assigned = label >= 0
+        if assigned.all():
+            break
+        for i in range(len(masks)):
+            cur = Image.fromarray(((label == i) * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(3))
+            grown = np.array(cur) > 127
+            label[grown & ~assigned] = i
+            assigned = label >= 0
+    return [Image.fromarray(((label == i) * 255).astype(np.uint8), 'L') for i in range(len(masks))]
 
 
 def recolour(im, mask, hue, sat, vmul, vadd=0.0, sat_scale=None):
@@ -371,12 +395,14 @@ def build(src, out_path, cfg):
     ranger_base = outfit.material_texture_image(0, 'baseColorTexture').convert('RGB')
     ranger_orm = outfit.material_texture_image(0, 'metallicRoughnessTexture').convert('RGB')
     ranger_nrm = outfit.material_texture_image(0, 'normalTexture').convert('RGB')
-    MS = 1024
+    # masks at the working resolution of the base, then grown into the gutters between islands
+    MS = 2048
     cloth = uv_mask(outfit, {'Male_Ranger_Body', 'Male_Ranger_Legs'}, MS)
     sleeves = uv_mask(outfit, {'Male_Ranger_Arms'}, MS, lambda n, pi, pr: pr.get('material') == 0)
     leather = uv_mask(outfit, {'Male_Ranger_Arms_Bracer', 'Male_Ranger_Feet_Boots', 'Male_Ranger_Acc_Pauldron'}, MS)
     belts = uv_mask(outfit, {'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_1.001'}, MS)
     hood = uv_mask(outfit, {'Male_Ranger_Head_Hood'}, MS)
+    cloth, sleeves, leather, belts, hood = pad_masks([cloth, sleeves, leather, belts, hood])
     base = ranger_base.resize((2048, 2048), Image.LANCZOS)
 
     def tint(img, mask, spec):
@@ -388,11 +414,11 @@ def build(src, out_path, cfg):
     base = tint(base, belts, cfg['belts'])
     if cfg.get('hood_col'):
         base = tint(base, hood, cfg['hood_col'])
-    outfit_base_tex = W.image(base.resize((S_OUT, S_OUT), Image.LANCZOS), 'outfit_base', 'JPEG')
+    outfit_base_tex = W.image(base.resize((S_OUT, S_OUT), Image.LANCZOS), 'outfit_base', 'JPEG', quality=94)
     outfit_orm_tex = W.image(resize(ranger_orm, 512), 'outfit_orm', 'JPEG')
     outfit_nrm_tex = W.image(resize(ranger_nrm, S_OUT), 'outfit_normal')
     W.g['materials'].append({'name': 'outfit', 'pbrMetallicRoughness': {'baseColorTexture': {'index': outfit_base_tex}, 'metallicRoughnessTexture': {'index': outfit_orm_tex}, 'metallicFactor': 1.0, 'roughnessFactor': 1.0},
-                             'occlusionTexture': {'index': outfit_orm_tex, 'strength': 0.7}, 'normalTexture': {'index': outfit_nrm_tex, 'scale': 0.8}})
+                             'occlusionTexture': {'index': outfit_orm_tex, 'strength': 0.7}, 'normalTexture': {'index': outfit_nrm_tex, 'scale': 0.45}})
     M_OUTFIT = 0
 
     def skin_material(gl, mat_idx, name, size):

@@ -142,3 +142,57 @@ report.
 
 **Next.** Finish the gameplay-camera fight capture and the frozen-frame overlay and hit-reaction
 sheets, assemble the GIF, replace the README combat plates, finish SESSION_REPORT.md, push.
+
+## 16:05 UTC — session close
+
+**Shipped.** PR #2 (Combat V1) was merged by pixelbuyte at 15:55 UTC; PR #3 carries the
+session report, the gameplay-camera captures and the README plates.
+
+**Verified visually.** Fight capture from the real third-person camera: the warrior closes on the
+orange enemy, trades cuts, lands the heavy and finishes it by frame 12 (1.8 s of scripted time
+plus the render loop), ending on 62 HP; sword in the hand throughout, both bodies on the stone.
+Hit-reaction sheet at fixed phases: at 0.06 s all three bodies are already leaning back with the
+head turned, at 0.12 s the recoil peaks (the staggered enemy furthest), by 0.30 s the light hit
+has settled back into the stance while the stagger is still easing out. F2 overlay from the side:
+both capsules and the blade's sweep chain fanning from over the head through the target's line.
+
+**Not done, by the brief's own rule.** Multiple enemies and the ally on the new pipeline in a
+live fight (hour 4) were not started: the 1v1 checklist was only completed in this final block.
+They are items 1 and 2 of the next-session plan in `SESSION_REPORT.md`.
+
+**FPS.** Not measurable here (SwiftShader). Draw calls 3,145 in the courtyard 1v1 at the medium
+preset; bundle 242.9 kB + 1,408 kB PlayCanvas; GLBs ≈ 5 MB each.
+
+## 20:25 UTC — checkpoint 5 (precision pass and the character look)
+
+**Found.** The "pixelated" characters are the outfit atlas, not the mesh or the renderer: the
+recolour masks were rasterised exactly on the UV islands, so every gutter between islands kept the
+source atlas's pale colour. Bilinear filtering and every mip level read a texel or two past the
+island edge, which put a bright speckled fringe on every panel of the outfit at any distance.
+The tint masks are now grown into the gutters (nearest-part label propagation, `pad_masks` in
+`tools/build-character.py`, working at 2048 before the 1024 output), the outfit JPEG is written at
+quality 94, and the cloth normal map is softened (0.8 → 0.45) so the shading reads as clean
+colour blocks like the reference plates. All three GLBs rebuilt.
+
+**Built.** Attack ids on every `act()`, a damage log (attack id, attacker, target, damage, time;
+`__ECHOES.hits()`), the anticipation / active / recovery phase from the animator, and the F1
+panel now shows `attack #id  frames ACTIVE  window OPEN` plus the last four damage events. The hit
+lab asserts that no (attack id, target) pair appears twice in the log. Code-review reuse
+cleanups applied: one `spawnEnemy` for the three ways a fight starts (which also retires the
+leftover purple trail on the preview enemy), one capsule-overlay submit for the live and the
+frozen frame, one `BASE_CLIPS` table spread into the three variants, `wrapAngle` in math.ts used
+by the animator, the soft-target and the sweep placement, `facingDot` in the soft-target, and the
+damage-window events moved onto `Actor.windowEvent`. A shadowed `heavy` recompute in `landHit`
+is deleted.
+
+**Testing.** Hit lab (with the id assertion), AI duel and movement lab running against the
+rebuilt GLBs; close-up render of the player at the high preset and the frozen-frame overlay
+queued on the production build.
+
+**20:35 addendum — second cause of the pixelated look.** The close-up render at the high preset
+came out soft even with the fixed atlas: adaptive resolution had ratcheted the render scale down
+to 60% (the medium preset starts at 80%, so 48% effective) because the SwiftShader frames were
+over 20 ms — exactly what a mid-range GPU does at 1440p. The sharp dark fighters show the
+upscale long before the fogged scenery does. The floor is now 85%, medium starts at 90%, and the
+controller steps down only below ~45 fps and back up above ~62 fps (`src/rendering/postfx.ts`).
+The capture scripts pin `scale=1` so renders judge the assets, not the frame rate.

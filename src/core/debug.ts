@@ -25,6 +25,8 @@ export interface DebugHooks {
   freeCam: (on: boolean) => void;
   /** tooling: freeze the game loop (simulate() still steps it) so a capture reads one exact frame */
   pause?: (on: boolean) => void;
+  /** tooling: the damage log (attack id, attacker, target, damage, time) */
+  hits?: () => { t: number; attack: number; src: string; target: string; dmg: number }[];
   world?: unknown;
 }
 
