@@ -60,7 +60,9 @@ hitdetect,skinned}.ts` (rig.ts and ik.ts deleted), `src/core/debug.ts`, `src/gam
   resolution on the high and medium presets dropped the render scale to 60% (48% effective on
   medium) whenever a frame took over 20 ms, which pixelates the sharp dark fighters while fog hides
   it on the scenery. The floor is now 85%, the medium preset starts at 90%, and the controller only
-  steps down below ~45 fps and back up above ~62 fps.
+  steps down below ~45 fps and back up above ~62 fps. Verified with a close-up render at the
+  high preset and full scale: the outfit reads as solid navy panels with the cyan belt, no seam
+  speckle, clean silhouette edges, sword in the hand.
 - **Hits were frame-rate dependent.** The swept blade was rebuilt from two poses a frame apart; at
   1/20 s the second combo hit was lost and at 1/10 s nothing landed. Fixed by sampling the
   animation at a fixed rate while a window is pending (see Completed). Verified at 1/60 … 1/10.
