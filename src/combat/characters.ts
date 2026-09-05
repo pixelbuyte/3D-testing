@@ -16,6 +16,8 @@ export interface Fighter {
   weaponEntity: Entity;
   /** nunchucks only: the spinning half */
   freeChuck?: Entity;
+  /** Advance articulated attachments at the same substeps as the skeletal pose. */
+  updateAttachments?(dt: number): void;
   animator: FighterAnimator;
   /** materials that flash white when a hit lands */
   flashMats: StandardMaterial[];

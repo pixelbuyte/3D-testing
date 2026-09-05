@@ -16,6 +16,8 @@ import { clamp01 } from '@/utils/math';
 
 export interface WeaponBuild {
   entity: Entity;
+  /** Moving damage-bearing part; defaults to the weapon root for a rigid blade. */
+  strikeEntity?: Entity;
   /** local-space base and tip of the cutting edge, used for the trail and hit sweeps */
   base: Vec3;
   tip: Vec3;
@@ -92,21 +94,36 @@ export function buildNunchucks(ctx: EngineContext, wood: StandardMaterial, metal
   pivot.setLocalPosition(0, 0.012, 0);
   const chain: MeshData = emptyData();
   for (let i = 0; i < 5; i++) {
-    // alternating link orientation, the way a real chain lies
-    appendData(chain, transformData(cylinderData(0.011, 0.011, 0.006, 6, 1, false), [0, 0.014 + i * 0.026, 0], [90, i % 2 ? 90 : 0, 0], [1.6, 1, 1]));
+    appendData(chain, transformData(chainLink(), [0, 0.014 + i * 0.026, 0], [0, i % 2 ? 90 : 0, 0]));
   }
   const chainEnt = new Entity('chain');
   chainEnt.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, chain), metal)], castShadows: false });
   pivot.addChild(chainEnt);
 
   const free = new Entity('chuck-free');
-  free.setLocalPosition(0, 0.155, 0);
+  free.setLocalPosition(0, 0.13, 0);
   free.addComponent('render', { meshInstances: [new MeshInstance(createMesh(ctx.device, stick()), wood), new MeshInstance(createMesh(ctx.device, caps()), cap)], castShadows: true });
   free.setLocalEulerAngles(180, 0, 0);
   pivot.addChild(free);
   e.addChild(pivot);
 
-  return { entity: e, base: new Vec3(0, 0.02, 0), tip: new Vec3(0, 0.45, 0), free: pivot };
+  return { entity: e, strikeEntity: free, base: new Vec3(0, -0.015, 0), tip: new Vec3(0, -0.29, 0), free: pivot };
+}
+
+/** Hollow oval links with alternating planes; the center is open, not a stack of discs. */
+function chainLink(): MeshData {
+  const d = emptyData(), segments = 10, tube = 4;
+  for (let i = 0; i <= segments; i++) for (let j = 0; j <= tube; j++) {
+    const a = i / segments * Math.PI * 2, b = j / tube * Math.PI * 2;
+    const ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b);
+    d.positions.push(ca*(0.009+0.0025*cb),sa*(0.016+0.0025*cb),0.0025*sb);
+    d.normals.push(ca*cb,sa*cb,sb);d.uvs.push(i/segments,j/tube);
+  }
+  for (let i=0;i<segments;i++) for(let j=0;j<tube;j++) {
+    const a=i*(tube+1)+j,b=a+tube+1;
+    d.indices.push(a,b,a+1,a+1,b,b+1);
+  }
+  return d;
 }
 
 const MAX_SEG = 22;

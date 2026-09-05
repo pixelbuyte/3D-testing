@@ -15,6 +15,7 @@ import { LEVEL } from '@/world/level';
 import { installDebug, isShotMode, urlParams } from '@/core/debug';
 import { DEG } from '@/utils/math';
 import { settings } from '@/core/settings';
+import { installCharacterReview } from '@/combat/review';
 
 export class Game {
   input: Input;
@@ -95,6 +96,7 @@ export class Game {
     this.hud.show();
     this.hud.fadeIn();
     this.hud.setObjective('Awaken the three stones', 9);
+    if (urlParams.has('characters')) installCharacterReview(this);
     const unlock = async (): Promise<void> => {
       if (this.audioStarted) return;
       this.audioStarted = true;
@@ -128,6 +130,8 @@ export class Game {
     setTimeout(() => this.hud.fadeIn(), 600);
     if (!isShotMode) this.input.requestLock();
   }
+
+  setPaused(on: boolean): void { this.paused = on; }
 
   /**
    * Tooling: step the controller and the fight together without rendering, optionally with a

@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Echoes of the Shrine — a small cinematic 3D browser game built on PlayCanvas Engine 2.x (WebGPU-first, WebGL2 fallback).",
   "scripts": {
+    "characters:build": "python3 tools/style-characters.py && node tools/optimize-characters.mjs && node tools/export-weapons.mjs && python3 tools/validate-characters.py",
+    "characters:validate": "python3 tools/validate-characters.py",
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",

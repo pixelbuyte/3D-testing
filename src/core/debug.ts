@@ -47,4 +47,4 @@ export function installDebug(h: DebugHooks): DebugHooks {
 }
 
 export const urlParams = new URLSearchParams(location.search);
-export const isShotMode = urlParams.has('shot');
+export const isShotMode = urlParams.has('shot') || urlParams.has('characters');

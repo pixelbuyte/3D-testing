@@ -70,6 +70,7 @@ const SWING = (t0: number, t1: number, t2: number) => [{ t: t0, name: 'swing' },
 
 /** the orange swordsman: the director's enemy clip names onto the same tracks */
 const ENEMY_CLIPS: Record<string, SkinnedClipDef> = {
+  dodge: { track: 'dodge', rootMotion: 1 },
   idle: { track: 'idle', loop: true },
   guard: { track: 'guard', loop: true },
   enemyIdle: { track: 'guard', loop: true },
@@ -169,6 +170,7 @@ export class SkinnedAnimator implements FighterAnimator {
   private tmpQ = new Quat();
   private tmpQ2 = new Quat();
   private pendingLunge = 0;
+  private stoppingFade = 0;
 
   breathe = 1;
   lean = 0;
@@ -238,7 +240,7 @@ export class SkinnedAnimator implements FighterAnimator {
   }
 
   stopAction(): void {
-    if (this.action) { this.prev = this.action; this.action = null; }
+    if (this.action) { this.prev = this.action; this.action = null; this.stoppingFade = 0.12; }
   }
 
   get actionName(): string | null { return this.action && !this.action.recovery ? this.action.name : null; }
@@ -288,7 +290,8 @@ export class SkinnedAnimator implements FighterAnimator {
     // --- the action on top, and the one it replaced fading underneath it
     if (this.prev) {
       const p = this.prev;
-      const w = this.actionWeight(p, dt) * (this.action ? 1 - easeOut(this.action.fade) : 1);
+      if (!this.action) this.stoppingFade = Math.max(0,this.stoppingFade-dt);
+      const w = this.actionWeight(p, dt) * (this.action ? 1 - easeOut(this.action.fade) : this.stoppingFade / 0.12);
       p.clip.blendWeight = w;
       p.clip.blendOrder = 2;
       if (w <= 0.001 || p.clip.time >= p.dur - 1e-4 && !p.loop && !p.def.hold) this.prev = null;
@@ -459,26 +462,32 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
   }
   const rim: [number, number, number] = variant === 'enemy' ? [0.95, 0.55, 0.30] : variant === 'ally' ? [0.72, 0.76, 0.92] : [0.55, 0.72, 0.95];
   for (const [name, m] of mats) {
-    if (name === 'outfit') applyRim(m, rim, 0.34, 3.0);
+    if (name === 'outfit' || name.startsWith('shrine_')) applyRim(m, rim, 0.18, 3.0);
     else if (name.startsWith('skin')) applyRim(m, [0.9, 0.62, 0.5], 0.2, 3.5);
     else if (name === 'hair' || name === 'brows') applyRim(m, rim, 0.4, 2.6);
     m.update();
   }
 
   // the weapon: a socket under the hand bone, then the weapon with a local offset inside it
-  const hand = char.entity.findByName('hand_r') as Entity;
-  const socket = new Entity('WeaponSocket');
-  socket.setLocalPosition(KATANA_SOCKET.pos[0], KATANA_SOCKET.pos[1], KATANA_SOCKET.pos[2]);
-  socket.setLocalRotation(new Quat(KATANA_SOCKET.quat[0], KATANA_SOCKET.quat[1], KATANA_SOCKET.quat[2], KATANA_SOCKET.quat[3]));
-  hand.addChild(socket);
+  const hand = char.entity.findByName('hand_r') as Entity | null;
+  if (!hand) throw new Error(`${variant}: humanoid rig is missing hand_r`);
+  let socket = char.entity.findByName('WeaponSocket_R') as Entity | null;
+  if (!socket) {
+    socket = new Entity('WeaponSocket_R');
+    socket.setLocalPosition(...KATANA_SOCKET.pos);
+    socket.setLocalRotation(new Quat(...KATANA_SOCKET.quat));
+    hand.addChild(socket);
+  }
+  if (socket.parent !== hand) throw new Error(`${variant}: weapon socket must belong to hand_r`);
   let weapon: WeaponBuild;
   let freeChuck: Entity | undefined;
   if (variant === 'ally') {
     const chucks = buildNunchucks(ctx,
       characterMaterialFor(ctx, variant, 'wood', new Color(0.12, 0.10, 0.10), 'leather'),
       characterMaterialFor(ctx, variant, 'metal', new Color(0.62, 0.64, 0.70), 'metal'),
-      characterMaterialFor(ctx, variant, 'cap', new Color(0.75, 0.85, 1.0), 'metal'));
-    chucks.entity.setLocalPosition(0, -0.10, 0);
+      characterMaterialFor(ctx, variant, 'cap', new Color(0.30, 0.85, 0.88), 'metal'));
+    // The held baton spans -0.29..0 in weapon Y; its midpoint must meet the palm.
+    chucks.entity.setLocalPosition(0, 0.15, 0);
     socket.addChild(chucks.entity);
     weapon = chucks;
     freeChuck = chucks.free;
@@ -496,10 +505,22 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
   const animator = new SkinnedAnimator(char, CLIP_TABLES[variant]);
   const chestNode = char.entity.findByName('spine_02') as Entity;
   const chestPos = new Vec3();
-  const outfit = mats.get('outfit');
+  let attachmentTime = 0;
+  let chuckAngle = 165;
   return {
-    root, scale, height: 1.81 * scale, weapon, weaponEntity: weapon.entity, animator, freeChuck,
-    flashMats: outfit ? [outfit] : [],
+    root, scale, height: (variant === 'enemy' ? 1.93 : variant === 'ally' ? 1.95 : 1.84) * scale,
+    weapon, weaponEntity: weapon.strikeEntity ?? weapon.entity, animator, freeChuck,
+    flashMats: [...mats.entries()].filter(([name]) => name === 'outfit' || name.startsWith('shrine_')).map(([,mat]) => mat),
+    updateAttachments: freeChuck ? (dt) => {
+      attachmentTime += dt;
+      if (animator.sweeping) chuckAngle = (chuckAngle + dt * 620) % 360;
+      else {
+        const target = 165 + Math.sin(attachmentTime * 2.4) * 12;
+        const delta = ((target - chuckAngle + 540) % 360) - 180;
+        chuckAngle += delta * (1 - Math.exp(-dt * 8));
+      }
+      freeChuck.setLocalEulerAngles(0, 0, chuckAngle);
+    } : undefined,
     chest: () => chestPos.copy(chestNode.getPosition()),
     destroy: () => root.destroy(),
   };

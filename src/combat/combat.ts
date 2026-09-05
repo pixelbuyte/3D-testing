@@ -599,8 +599,6 @@ export class CombatDirector {
     }
 
     a.setLocomotion(C.NUN_IDLE, C.WALK, C.RUN, dt);
-    // the free chuck spins constantly — it is most of what sells the character
-    if (a.fighter.freeChuck) a.fighter.freeChuck.setLocalEulerAngles(0, 0, (this.time * 620) % 360);
     a.update(dt);
     a.setTrail(a.hitOpen ? 1 : 0.25);
     this.sweepAttack(a, this.enemyActors(), (t, at) => this.landHit(a, this.enemyOf(t), at));
@@ -769,7 +767,7 @@ export class CombatDirector {
    * Character and animation work needs a tight loop — spawning a real encounter and chasing the
    * fight around the courtyard to see whether an elbow bends correctly wastes minutes per look.
    */
-  preview(x: number, z: number, yawDeg: number, which: 'idle' | 'slash' | 'heavy' | 'combo' | 'run' | 'death' | 'hit' = 'idle'): void {
+  preview(x: number, z: number, yawDeg: number, which: 'idle' | 'slash' | 'heavy' | 'combo' | 'run' | 'walk' | 'dodge' | 'death' | 'hit' = 'idle'): void {
     const g = (gx: number, gz: number): number => this.world.field.heightAt(gx, gz);
     const fwd = { x: -Math.sin(yawDeg * DEG), z: -Math.cos(yawDeg * DEG) };
     const right = { x: Math.cos(yawDeg * DEG), z: -Math.sin(yawDeg * DEG) };
@@ -805,9 +803,10 @@ export class CombatDirector {
     if (which === 'slash') { loop(this.player, C.SLASH_1); loop(this.ally, C.NUN_COMBO); loop(en.actor, C.ENEMY_ATTACK); }
     else if (which === 'heavy') { loop(this.player, C.HEAVY); loop(this.ally, C.NUN_FLOURISH); loop(en.actor, C.ENEMY_ATTACK); }
     else if (which === 'combo') { loop(this.player, C.SLASH_3); loop(this.ally, C.NUN_COMBO); loop(en.actor, C.STAGGER); }
-    else if (which === 'death') { loop(this.player, C.DEATH); loop(this.ally, C.NUN_FLOURISH); loop(en.actor, C.DEATH); }
+    else if (which === 'death') { for (const a of [this.player,this.ally,en.actor]) loop(a,C.DEATH); }
+    else if (which === 'dodge') { loop(this.player,C.DODGE); loop(this.ally,C.DODGE); loop(en.actor,C.DODGE); }
     else if (which === 'hit') { loop(this.player, C.HIT_REACT); loop(this.ally, C.HIT_REACT); loop(en.actor, C.STAGGER); }
-    else if (which === 'run') {
+    else if (which === 'run' || which === 'walk') {
       for (const a of [this.player, this.ally, en.actor]) { a.anim.stopAction(); a.vel.set(0, 0, 0); }
     } else {
       for (const a of [this.player, this.ally, en.actor]) a.anim.stopAction();
@@ -824,12 +823,22 @@ export class CombatDirector {
 
   private previewMode: string | null = null;
 
+  setPreviewAngle(degrees: number): void {
+    if (!this.previewMode) return;
+    for (const a of [this.player, this.ally, ...this.enemies.filter(e => e.encounter === -1).map(e => e.actor)]) {
+      a.yaw = a.targetYaw = degrees * DEG;
+      a.root.setEulerAngles(0,degrees,0);
+    }
+  }
+
   /** Preview mode drives the three fighters directly and skips all AI. */
   private updatePreview(dt: number): void {
     const run = this.previewMode === 'run';
+    const walk = this.previewMode === 'walk';
     const actors: Actor[] = [this.player, this.ally, ...this.enemies.map((e) => e.actor)];
     for (const a of actors) {
       if (run) a.vel.set(0, 0, -a.runSpeed);   // pretend-move so the locomotion blend goes to run
+      else if (walk) a.vel.set(0,0,-1.64);
       const isEnemy = this.enemies.some((e) => e.actor === a);
       const isAlly = a === this.ally;
       a.setLocomotion(
@@ -839,7 +848,6 @@ export class CombatDirector {
       a.setTrail(a.hitOpen ? 1 : 0);
       a.updateVisual(dt);          // hold position: this is a turntable, not a fight
     }
-    if (this.ally.fighter.freeChuck) this.ally.fighter.freeChuck.setLocalEulerAngles(0, 0, (this.time * 620) % 360);
     this.fx.update(dt);
   }
 

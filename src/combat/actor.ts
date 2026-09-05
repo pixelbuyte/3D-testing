@@ -233,6 +233,7 @@ export class Actor {
     const sub = dt / n;
     for (let k = 1; k <= n; k++) {
       this.anim.update(sub);
+      this.fighter.updateAttachments?.(sub);
       if (!fine) continue;
       // the window closed during this sub-step: the sub-step's own travel still counts
       const active = this.hitOpen || this.hitTail;
