@@ -30,6 +30,9 @@ until the 1v1 passes its checklist, and that checklist was completed only at the
   heavy 60 ms, hurt 45 ms) → camera impulse.
 - **Debug mode**: F1 stats panel, F2 hitbox overlay (capsules, sweep chains green/red, contact
   points). Both off in normal play.
+- **Hurt capsule tightened** to 0.30 m (was 0.38, a stand-in for the coarse-step misses the
+  sub-stepped sampling has since removed) with 0.06 m of blade tolerance: a cut that visibly
+  clears the body no longer counts, and the light attacks' reach is ≈2.0 m from body centre.
 - **Sweep precision counters**: every attack has an id, every damage event is logged with
   attacker, target and amount, the animator reports anticipation / active / recovery, and the F1
   panel shows the attack id, frame phase, window state and the last damage events. The hit lab
@@ -90,11 +93,13 @@ step sizes to prove the combat maths does not change with the frame rate.
 
 | Lab | What it does | Result |
 | --- | --- | --- |
-| Hit lab | Held enemy at 1.6 m and 2.3 m; light ×3, heavy, light ×3; then the same with the back turned. Steps 1/60, 1/30, 1/20, 1/10 s. | Every case: 12 / 14 / 18 then the killing heavy (21 left), nothing after death, nothing with the back turned, no NaN. Identical at all four step sizes. |
+| Hit lab | Held enemy at 1.6 m and 2.3 m; light ×3, heavy, light ×3; then the same with the back turned. Steps 1/60, 1/30, 1/20, 1/10 s. | At 1.6 m: 12 / 14 / 18 then the killing heavy (21 left), nothing after death. At 2.3 m (beyond the light attacks' ≈2.0 m reach with the tightened 0.30 m capsule): the first two lights visibly fall short and land 0, the lunging third slash lands 18, the heavy 28, and the follow-up lights 12 / 7 finish it. Nothing with the back turned, no NaN, no (attack id, target) pair twice. Identical at all four step sizes. |
 | AI duel | Enemy fights back; scripted swings and dodges. Steps 1/60, 1/20 s. | Enemy dies at 4.9 s / 12.9 s; player takes 12 or 14 per enemy hit (1 hit / 3 hits); states seen idle, alert, approach, combatIdle, attack, recover, hit, stagger, dying; no state held > 8 s; 0 attacks after death; no NaN. |
 | Movement lab | Sprint in from 4.5 m and swing while still running; strafe under enemy attacks for 8 s; attack while the yaw sweeps 50°; the same with the back turned. Steps 1/60, 1/20 s. | Run-in swing lands 12 once at both steps; strafing player takes 12 / 14 with ≥ 2.1 s between hits and keeps moving every step; turning swing lands 12 once; back-turned turning swing lands 0; no NaN. |
 | Wall lab | The 1.1 m stone lantern pillar between the fighters at 2.05 m; the same spacing on open stone (control); a 0.11 m torii post between them. Steps 1/60, 1/20 s. | Through the pillar: 0 / 0 / 0 / 0 at both steps. Open control: 12 / 14 / 18 / 21. Thin post: the swings whose contact point falls beside the post land, the ones behind it are blocked (12 / 0 / 18 / 28 at 1/60, 12 / 0 / 18 / 0 at 1/20) — the blade genuinely passes the post on one side, so the per-swing outcome depends on centimetres of contact position. |
 | Slope lab | The steepest walkable patch within 45 m of the courtyard (17°, at x 45 z −24.5); enemy uphill, then downhill. Steps 1/60, 1/20 s. | 12 / 14 / 18 / 21 in all four cases; no NaN. |
+
+The hit, wall, movement and slope labs were re-run after the capsule was tightened to 0.30 m; every result above is from that run (only the 2.3 m hit-lab row changed, as described).
 | Staged encounters | The three encounters simulated end to end. | Still clear (64 / 22 / 52 swings). |
 | Gameplay-camera fight capture | The AI 1v1 from the real third-person camera, one frame per 0.15 s, scripted player who closes, swings in reach and dodges on the enemy's commit. | Enemy dead by frame 12; player finishes on 62 HP; sword stays in the hand, feet on the stone, hit flash on the struck body only (`docs/shots/combat-fight.gif`). |
 | Overlay capture | F2 overlay from the side, loop frozen, a light attack stepped to fixed phases. | Four fixed phases of a light attack against a held enemy at 1.7 m: before the window (no chain), window open (green chain, no contact, enemy 65 HP), the contact frame (chain red at the contact, enemy 65 → 53 HP and in `hit`, hit flash on that body only; `docs/shots/combat-overlay.jpg`), and after (window closed, no chain). Draw calls 3,153 in that view. |

@@ -196,3 +196,12 @@ over 20 ms — exactly what a mid-range GPU does at 1440p. The sharp dark fighte
 upscale long before the fogged scenery does. The floor is now 85%, medium starts at 90%, and the
 controller steps down only below ~45 fps and back up above ~62 fps (`src/rendering/postfx.ts`).
 The capture scripts pin `scale=1` so renders judge the assets, not the frame rate.
+
+**20:40 addendum — precision pass, capsule tightened.** With the blade sampled at 60 Hz whatever
+the frame rate, the hurt capsule no longer has to cover missed samples: radius 0.38 → 0.30 m
+(shoulder half-width plus a hand), blade tolerance 0.08 → 0.06 m. Hit lab: 1.6 m unchanged
+(12 / 14 / 18 + heavy); 2.3 m now shows the first two light slashes falling visibly short and
+landing 0, the lunging third and the heavy connecting — the light attacks' honest reach is
+≈2.0 m from body centre (the wall lab's open-ground control at 2.05 m still lands 12 / 14 / 18 /
+21). Identical at 1/60, 1/30, 1/20 and 1/10 s; no attack id damages the same target twice;
+through the lantern pillar still 0 / 0 / 0 / 0. PR #3 merged; this goes out as a fresh PR.

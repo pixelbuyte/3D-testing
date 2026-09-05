@@ -46,13 +46,18 @@ export const COMBAT = {
     /** the sweep between two samples is split so that no sub-step moves the tip further than this */
     maxSubStep: 0.12,
     /** hit tolerance added to the target's capsule radius: half the blade's thickness plus a little */
-    thickness: 0.08,
+    thickness: 0.06,
     /** cosine of the widest angle off the attacker's facing a target may sit and still be hit */
     minFacingDot: -0.2,
   },
   hurtbox: {
-    /** body capsule: radius and the segment from the ground up */
-    radius: 0.38,
+    /**
+     * body capsule: radius and the segment from the ground up. 0.30 is the shoulder half-width
+     * plus a hand's breadth — a cut that visibly clears the body must not count, and the blade is
+     * sampled at 60 Hz whatever the frame rate, so the capsule no longer has to make up for
+     * missed samples.
+     */
+    radius: 0.30,
     bottom: 0.15,
     top: 1.65,
   },
