@@ -142,3 +142,23 @@ report.
 
 **Next.** Finish the gameplay-camera fight capture and the frozen-frame overlay and hit-reaction
 sheets, assemble the GIF, replace the README combat plates, finish SESSION_REPORT.md, push.
+
+## 16:05 UTC — session close
+
+**Shipped.** PR #2 (Combat V1) was merged by pixelbuyte at 15:55 UTC; PR #3 carries the
+session report, the gameplay-camera captures and the README plates.
+
+**Verified visually.** Fight capture from the real third-person camera: the warrior closes on the
+orange enemy, trades cuts, lands the heavy and finishes it by frame 12 (1.8 s of scripted time
+plus the render loop), ending on 62 HP; sword in the hand throughout, both bodies on the stone.
+Hit-reaction sheet at fixed phases: at 0.06 s all three bodies are already leaning back with the
+head turned, at 0.12 s the recoil peaks (the staggered enemy furthest), by 0.30 s the light hit
+has settled back into the stance while the stagger is still easing out. F2 overlay from the side:
+both capsules and the blade's sweep chain fanning from over the head through the target's line.
+
+**Not done, by the brief's own rule.** Multiple enemies and the ally on the new pipeline in a
+live fight (hour 4) were not started: the 1v1 checklist was only completed in this final block.
+They are items 1 and 2 of the next-session plan in `SESSION_REPORT.md`.
+
+**FPS.** Not measurable here (SwiftShader). Draw calls 3,145 in the courtyard 1v1 at the medium
+preset; bundle 242.9 kB + 1,408 kB PlayCanvas; GLBs ≈ 5 MB each.
