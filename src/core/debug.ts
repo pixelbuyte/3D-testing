@@ -11,10 +11,10 @@ export interface DebugHooks {
   /** tooling: fire an attack without pointer lock */
   attack?: (kind: string) => boolean;
   /** tooling: advance the fight without rendering, optionally at a chosen step size */
-  simulate?: (seconds: number, step?: number) => void;
+  simulate?: (seconds: number, step?: number, move?: { x: number; z: number; sprint?: boolean }) => void;
   enemyHealth?: () => { id: number; hp: number; state: string }[];
   /** tooling: a 1v1 on flat stone; hold=true freezes the enemy for hit-detection tests */
-  arena?: (hold?: boolean, dist?: number) => void;
+  arena?: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => void;
   /** tooling: turn the player to an absolute yaw in degrees */
   setYaw?: (deg: number) => void;
   /** tooling: the F2 hitbox overlay */

@@ -97,7 +97,6 @@ export class CombatDirector {
   private playerHurtCd = 0;
   private debugDraw: CombatDebugDraw;
   private hitOut: SweepHit = { point: new Vec3(), t: 0, distance: 0 };
-  private rayDir = new Vec3();
   private enemyActorList: Actor[] = [];
   /** tooling: per-frame sweep records while set */
   trace: Record<string, unknown>[] | null = null;
@@ -649,11 +648,7 @@ export class CombatDirector {
 
   /** Is there level geometry between two points? Terrain does not count: fights are on open stone. */
   private blocked(from: Vec3, to: Vec3): boolean {
-    this.rayDir.sub2(to, from);
-    const dist = this.rayDir.length();
-    if (dist < 0.05) return false;
-    this.rayDir.mulScalar(1 / dist);
-    return this.world.collision.rayDistance(from, this.rayDir, dist) < dist - 0.05;
+    return this.world.collision.segmentBlocked(from, to);
   }
 
   private enemyActors(): Actor[] {
@@ -774,7 +769,7 @@ export class CombatDirector {
    * Character and animation work needs a tight loop — spawning a real encounter and chasing the
    * fight around the courtyard to see whether an elbow bends correctly wastes minutes per look.
    */
-  preview(x: number, z: number, yawDeg: number, which: 'idle' | 'slash' | 'heavy' | 'combo' | 'run' | 'death' = 'idle'): void {
+  preview(x: number, z: number, yawDeg: number, which: 'idle' | 'slash' | 'heavy' | 'combo' | 'run' | 'death' | 'hit' = 'idle'): void {
     const g = (gx: number, gz: number): number => this.world.field.heightAt(gx, gz);
     const fwd = { x: -Math.sin(yawDeg * DEG), z: -Math.cos(yawDeg * DEG) };
     const right = { x: Math.cos(yawDeg * DEG), z: -Math.sin(yawDeg * DEG) };
@@ -811,6 +806,7 @@ export class CombatDirector {
     else if (which === 'heavy') { loop(this.player, C.HEAVY); loop(this.ally, C.NUN_FLOURISH); loop(en.actor, C.ENEMY_ATTACK); }
     else if (which === 'combo') { loop(this.player, C.SLASH_3); loop(this.ally, C.NUN_COMBO); loop(en.actor, C.STAGGER); }
     else if (which === 'death') { loop(this.player, C.DEATH); loop(this.ally, C.NUN_FLOURISH); loop(en.actor, C.DEATH); }
+    else if (which === 'hit') { loop(this.player, C.HIT_REACT); loop(this.ally, C.HIT_REACT); loop(en.actor, C.STAGGER); }
     else if (which === 'run') {
       for (const a of [this.player, this.ally, en.actor]) { a.anim.stopAction(); a.vel.set(0, 0, 0); }
     } else {
@@ -894,11 +890,11 @@ export class CombatDirector {
    * Tooling: a 1v1 on the flat courtyard stone. One enemy three metres in front of the player, the
    * ally out of it. `hold` freezes the enemy's mind so hit detection can be tested on its own.
    */
-  forceDuel(hold = false, dist = 3.0): void {
+  forceDuel(hold = false, dist = 3.0, place?: { x: number; z: number; yaw: number; ex: number; ez: number }): void {
     const e = this.encounters[1] ?? this.encounters[0];
-    const px = e.x, pz = e.z - 1.5;
+    const px = place ? place.x : e.x, pz = place ? place.z : e.z - 1.5;
     this.controller.pos.set(px, this.world.field.heightAt(px, pz), pz);
-    this.controller.setYaw(Math.PI);          // forward is -Z; the enemy stands at +Z
+    this.controller.setYaw(place ? place.yaw * DEG : Math.PI);   // forward is -Z; by default the enemy stands at +Z
     for (const en of this.enemies) en.actor.destroy();
     this.enemies.length = 0;
     this.active = null;
@@ -911,7 +907,7 @@ export class CombatDirector {
       fighter: this.enemyFighter('blade'), team: 'enemy', ground: (gx, gz) => this.world.field.heightAt(gx, gz),
       trailColor: new Color(1.0, 0.55, 0.2), trailLife: 0.13, maxHealth: COMBAT.enemy.maxHealth.blade, runSpeed: 4.4,
     });
-    a.spawn(px, pz + dist, 0);
+    if (place) a.spawn(place.ex, place.ez, 0); else a.spawn(px, pz + dist, 0);
     const en: Enemy = { actor: a, state: 'idle', timer: hold ? 1e9 : 0.4, attackDur: 0.5, id: this.nextEnemyId++, cooldown: 0.8, moving: false, held: hold, kind: 'blade', slot: 0, dieT: 0, encounter: -2 };
     a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
     this.enemies.push(en);

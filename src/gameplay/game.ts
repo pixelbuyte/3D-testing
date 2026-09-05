@@ -76,12 +76,12 @@ export class Game {
       encounter: (n: number) => this.combat.forceEncounter(n),
       preview: (x: number, z: number, yaw: number, which?: string) => this.combat.preview(x, z, yaw, which as never),
       attack: (k: string) => this.combat.debugAttack(k as never),
-      simulate: (sec: number, step?: number) => this.combat.simulate(sec, this.input, step),
+      simulate: (sec: number, step?: number, move?: { x: number; z: number; sprint?: boolean }) => this.simulate(sec, step ?? 1 / 60, move ?? null),
       hitboxes: (on: boolean) => this.combat.setHitboxes(on),
       trace: (on: boolean) => { if (on) this.combat.trace = []; const t = this.combat.trace; if (!on) this.combat.trace = null; return t ?? []; },
       previewOff: () => this.combat.previewOff(),
       enemyHealth: () => this.combat.debugEnemyHealth(),
-      arena: (hold?: boolean, dist?: number) => this.combat.forceDuel(hold, dist),
+      arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => this.combat.forceDuel(hold, dist, place),
       setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       world: this.world,
@@ -126,6 +126,25 @@ export class Game {
     this.hud.fadeOut();
     setTimeout(() => this.hud.fadeIn(), 600);
     if (!isShotMode) this.input.requestLock();
+  }
+
+  /**
+   * Tooling: step the controller and the fight together without rendering, optionally with a
+   * scripted movement intent, so "attack while running" and "hit while strafing" can be tested
+   * at any step size the same way the real loop runs them.
+   */
+  private simulate(seconds: number, step: number, move: { x: number; z: number; sprint?: boolean } | null): void {
+    const n = Math.min(20000, Math.round(seconds / step));
+    const wasEnabled = this.input.enabled;
+    this.input.enabled = true;
+    this.input.override = move;
+    for (let i = 0; i < n; i++) {
+      if (!this.freeCam) this.player.update(step);
+      this.combat.update(step, this.input, this.freeCam);
+      this.input.endFrame();
+    }
+    this.input.override = null;
+    this.input.enabled = wasEnabled;
   }
 
   private update(dt: number): void {

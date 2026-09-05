@@ -40,6 +40,13 @@ interface SkinnedClipDef {
   rootMotion?: number;
   /** false for airborne or prone clips */
   ground?: boolean;
+  /**
+   * Instead of a track: an additive upper-body recoil over whatever the body is doing, for the
+   * given seconds. The source packs have no light hit reaction that keeps the feet planted (the
+   * knockback is on the ground within 0.2 s), and a recoil layered on the stance never breaks the
+   * pose it lands on. Strength 1 is a light hit.
+   */
+  flinch?: { strength: number; dur: number };
 }
 
 /** procedural clip name (what the director passes) → how the skinned body plays it */
@@ -53,7 +60,7 @@ const PLAYER_CLIPS: Record<string, SkinnedClipDef> = {
   slash3: { track: 'slash3', rootMotion: 1, events: [{ t: 0.34, name: 'swing' }, { t: 0.40, name: 'hitOpen' }, { t: 0.64, name: 'hitClose' }] },
   heavy: { track: 'heavy', rootMotion: 1, events: [{ t: 0.38, name: 'swing' }, { t: 0.44, name: 'hitOpen' }, { t: 0.70, name: 'hitClose' }] },
   dodge: { track: 'dodge', rootMotion: 1 },
-  hit: { track: 'hit' },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
   death: { track: 'death', hold: true, rootMotion: 1, ground: false },
   slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
@@ -72,8 +79,8 @@ const ENEMY_CLIPS: Record<string, SkinnedClipDef> = {
   enemyAttack: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: SWING(0.28, 0.36, 0.80) },
   enemyAttack2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
   enemyHeavy: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
-  hit: { track: 'hit' },
-  stagger: { track: 'hit' },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
+  stagger: { track: 'guard', flinch: { strength: 1.7, dur: 0.55 } },
   death: { track: 'death', hold: true, rootMotion: 1, ground: false },
   slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
@@ -89,7 +96,7 @@ const ALLY_CLIPS: Record<string, SkinnedClipDef> = {
   nunCombo: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
   nunFlourish: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
   dodge: { track: 'dodge', rootMotion: 1 },
-  hit: { track: 'hit' },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
   death: { track: 'death', hold: true, rootMotion: 1, ground: false },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
@@ -153,9 +160,12 @@ export class SkinnedAnimator implements FighterAnimator {
   private onEvent: (name: string) => void = () => {};
   private time = 0;
   private spine: Entity | null;
+  private spineLow: Entity | null;
   private head: Entity | null;
   private spineRest = new Quat();
+  private spineLowRest = new Quat();
   private headRest = new Quat();
+  private flinch: { t: number; dur: number; strength: number; loop: boolean } | null = null;
   private tmpQ = new Quat();
   private tmpQ2 = new Quat();
   private pendingLunge = 0;
@@ -179,6 +189,7 @@ export class SkinnedAnimator implements FighterAnimator {
       this.rmCurves.set(name, rootMotionCurve(track));
     }
     this.spine = char.entity.findByName('spine_02') as Entity | null;
+    this.spineLow = char.entity.findByName('spine_01') as Entity | null;
     this.head = char.entity.findByName('Head') as Entity | null;
   }
 
@@ -202,6 +213,12 @@ export class SkinnedAnimator implements FighterAnimator {
   }
 
   private start(name: string, def: SkinnedClipDef, fadeDur: number, loop: boolean, recovery: boolean): number {
+    if (def.flinch) {
+      // a hit interrupts whatever the body was doing; the recoil rides on top of the stance it fades to
+      this.stopAction();
+      this.flinch = { t: 0, dur: def.flinch.dur, strength: def.flinch.strength, loop };
+      return def.flinch.dur;
+    }
     const ac = this.clips.get(def.track);
     if (!ac) return 0.5;
     // the outgoing action keeps playing under the new one for the length of the fade
@@ -315,16 +332,34 @@ export class SkinnedAnimator implements FighterAnimator {
       }
     }
 
-    // --- additive life on top of the blend: breathing in the chest, the head tracking a target
+    // --- the hit recoil: a sharp snap back over the first fifth, then it eases out
+    let fl = 0;
+    if (this.flinch) {
+      const f = this.flinch;
+      f.t += dt;
+      if (f.t >= f.dur) { if (f.loop) f.t -= f.dur; else this.flinch = null; }
+      if (this.flinch) {
+        const e = f.t / f.dur;
+        fl = (e < 0.2 ? e / 0.2 : 1 - easeIn((e - 0.2) / 0.8)) * f.strength;
+      }
+    }
+
+    // --- additive life on top of the blend: breathing in the chest, the recoil, the head tracking a target
     if (this.spine) {
       const br = Math.sin(this.time * 1.5) * this.breathe * 1.2 + this.lean * 5;
-      this.tmpQ.setFromEulerAngles(br, 0, this.leanSide * 3);
+      this.tmpQ.setFromEulerAngles(br - 13 * fl, 0, this.leanSide * 3 + 6 * fl);
       this.spineRest.copy(this.spine.getLocalRotation());
       this.tmpQ2.mul2(this.spineRest, this.tmpQ);
       this.spine.setLocalRotation(this.tmpQ2);
     }
-    if (this.head && (this.lookYaw !== 0 || this.lookPitch !== 0)) {
-      this.tmpQ.setFromEulerAngles(this.lookPitch, this.lookYaw, 0);
+    if (this.spineLow && fl > 0) {
+      this.tmpQ.setFromEulerAngles(-8 * fl, 0, 4 * fl);
+      this.spineLowRest.copy(this.spineLow.getLocalRotation());
+      this.tmpQ2.mul2(this.spineLowRest, this.tmpQ);
+      this.spineLow.setLocalRotation(this.tmpQ2);
+    }
+    if (this.head && (this.lookYaw !== 0 || this.lookPitch !== 0 || fl > 0)) {
+      this.tmpQ.setFromEulerAngles(this.lookPitch + 16 * fl, this.lookYaw - 6 * fl, 0);
       this.headRest.copy(this.head.getLocalRotation());
       this.tmpQ2.mul2(this.headRest, this.tmpQ);
       this.head.setLocalRotation(this.tmpQ2);
@@ -351,6 +386,7 @@ export class SkinnedAnimator implements FighterAnimator {
 }
 
 function easeOut(t: number): number { return 1 - (1 - t) ** 3; }
+function easeIn(t: number): number { return t * t; }
 
 /** Pull the RootMotion node's translation curve out of a track, as forward metres over time. */
 function rootMotionCurve(track: AnimTrack): RootMotionCurve | null {

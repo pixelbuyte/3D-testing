@@ -80,3 +80,31 @@ build profile in hour 5.
 **Next.** Switch hit/stagger clips to the sword-fighter flinch track; verify the 1v1 visually from
 the gameplay camera with the F2 overlay (idle→attack, run→attack, combo, heavy, dodge, walls, kill
 mid-animation); feel pass on hit-stop, spark, sound and camera impulse.
+
+## 15:20 UTC — checkpoint 3 (after a four-hour usage pause)
+
+**Built.** Commit `7a7acb9` pushed and PR #2 opened for Combat V1. Hit reactions rebuilt: the
+KayKit flinch retargets with both arms locked out sideways and the UAL2 knockback has the body
+on the ground within 0.2 s, so neither can be a light-hit reaction. `hit` and `stagger` are now an
+additive upper-body recoil layered on the stance (spine_01, spine_02, head; a sharp snap over the
+first fifth, then an ease-out) inside `SkinnedAnimator`, with strength 1 / 0.34 s for a light hit
+and 1.7 / 0.55 s for a stagger; the FSM's backward shove is unchanged. Line of sight is now an
+exact segment test against the static colliders (`CollisionWorld.segmentBlocked`: slab test for
+boxes, circle plus height range for cylinders) instead of a 0.5 m ray march that stepped over
+thin posts. Tooling: `__ECHOES.simulate(sec, step, move)` steps the player controller together
+with the fight, with a scripted movement intent, and `arena(hold, dist, place)` stages the duel at
+explicit positions.
+
+**Tested / testing.** Running now, one at a time (three concurrent SwiftShader captures timed
+each other out): hit lab regression, AI duel, movement lab (attack while sprinting in, strafing
+under enemy attacks, attacking while turning and with the back turned), wall lab (lantern pillar
+between the fighters, open-ground control, torii post), slope lab (steepest walkable patch, enemy
+uphill and downhill), and the hit-reaction sheet.
+
+**Bugs found / fixed.** Both local servers had died during the pause (restarted). Ray-marched
+line of sight could miss anything thinner than 0.5 m (replaced). `preview('hit')` mode added.
+
+**FPS.** Still SwiftShader only; the production build profile comes with the session report.
+
+**Next.** Read the lab results, fix what they show, re-render the 1v1 from the gameplay camera with
+the F2 overlay, production build, SESSION_REPORT.md.
