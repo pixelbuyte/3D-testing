@@ -95,6 +95,51 @@ export class CollisionWorld {
     }
   }
 
+  /**
+   * Does the segment a→b pass through any static collider? Exact (slab test for boxes, circle and
+   * height range for cylinders), so a thin railing or a lattice post cannot fall between samples
+   * the way it does for the marched ray. Terrain is not consulted: this answers "is there a wall
+   * in the way", and fights are on open stone.
+   */
+  segmentBlocked(a: Vec3, b: Vec3): boolean {
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    const mx = (a.x + b.x) * 0.5, mz = (a.z + b.z) * 0.5;
+    for (const c of this.nearby(mx, mz)) {
+      if (c.kind === 'cyl') {
+        // 2D circle against the segment's ground projection, then the height range at that point
+        const fx = a.x - c.x, fz = a.z - c.z;
+        const A = dx * dx + dz * dz, B = 2 * (fx * dx + fz * dz), C = fx * fx + fz * fz - c.r * c.r;
+        let t0 = 0, t1 = 1;
+        if (A < 1e-9) { if (C > 0) continue; }
+        else {
+          const disc = B * B - 4 * A * C;
+          if (disc < 0) continue;
+          const sq = Math.sqrt(disc);
+          t0 = Math.max(0, (-B - sq) / (2 * A)); t1 = Math.min(1, (-B + sq) / (2 * A));
+          if (t0 > t1) continue;
+        }
+        const y0 = a.y + dy * t0, y1 = a.y + dy * t1;
+        if (Math.max(y0, y1) >= c.y && Math.min(y0, y1) <= c.y + c.h) return true;
+      } else {
+        // into the box's frame, then a slab test on each axis
+        const s = Math.sin(-c.rotY), co = Math.cos(-c.rotY);
+        const ax0 = a.x - c.x, az0 = a.z - c.z;
+        const ax = ax0 * co - az0 * s, az = ax0 * s + az0 * co, ay = a.y - c.y;
+        const ddx = dx * co - dz * s, ddz = dx * s + dz * co;
+        let t0 = 0, t1 = 1, hit = true;
+        for (const [o, d, h] of [[ax, ddx, c.hx], [ay, dy, c.hy], [az, ddz, c.hz]] as const) {
+          if (Math.abs(d) < 1e-9) { if (Math.abs(o) > h) { hit = false; break; } continue; }
+          let ta = (-h - o) / d, tb = (h - o) / d;
+          if (ta > tb) { const t = ta; ta = tb; tb = t; }
+          t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+          if (t0 > t1) { hit = false; break; }
+        }
+        if (hit) return true;
+      }
+    }
+    return false;
+  }
+
   /** Simple ray march against terrain + colliders for gaze focus distance (DOF). */
   rayDistance(origin: Vec3, dir: Vec3, maxDist = 60): number {
     const step = 0.5;

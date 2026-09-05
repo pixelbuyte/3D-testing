@@ -60,7 +60,10 @@ export class Input {
   /** call at end of frame */
   endFrame(): void { this.pressed.clear(); this.mouseDX = 0; this.mouseDY = 0; }
 
-  get moveX(): number { return (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0) - (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0); }
-  get moveZ(): number { return (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0) - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0); }
-  get sprint(): boolean { return this.down('ShiftLeft') || this.down('ShiftRight'); }
+  /** tooling: a scripted movement intent that stands in for the keys while the simulation is stepped */
+  override: { x: number; z: number; sprint?: boolean } | null = null;
+
+  get moveX(): number { return this.override ? this.override.x : (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0) - (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0); }
+  get moveZ(): number { return this.override ? this.override.z : (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0) - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0); }
+  get sprint(): boolean { return this.override ? !!this.override.sprint : this.down('ShiftLeft') || this.down('ShiftRight'); }
 }

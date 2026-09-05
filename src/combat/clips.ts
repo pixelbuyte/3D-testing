@@ -605,3 +605,6 @@ export const STAGGER: Clip = {
 };
 
 export const LOCOMOTION = { IDLE, GUARD, WALK, RUN };
+
+/** the enemy's second swing: the same timing vocabulary, a different track on the skinned body */
+export const ENEMY_ATTACK_2: Clip = { ...ENEMY_ATTACK, name: 'enemyAttack2' };

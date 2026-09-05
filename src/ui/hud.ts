@@ -1,5 +1,7 @@
 /** Minimal cinematic HUD: objective, interaction prompt, toasts, letterbox, fades, finale card. */
 export class HUD {
+  private dbg: HTMLElement | null = null;
+
   private root = document.getElementById('hud')!;
   private objective = document.getElementById('objective')!;
   private objectiveText = this.objective.querySelector<HTMLElement>('.text')!;
@@ -65,4 +67,17 @@ export class HUD {
     this.finale.querySelector<HTMLButtonElement>('.again')!.onclick = onAgain;
   }
   hideFinale(): void { this.finale.classList.remove('show'); setTimeout(() => (this.finale.hidden = true), 1500); }
+
+  /** F1 panel: a few monospace lines; null hides it and frees the element */
+  setDebugStats(text: string | null): void {
+    if (text === null) { this.dbg?.remove(); this.dbg = null; return; }
+    if (!this.dbg) {
+      const d = document.createElement('pre');
+      d.id = 'dbg';
+      d.style.cssText = 'position:fixed;left:12px;top:12px;margin:0;padding:8px 10px;font:12px/1.35 ui-monospace,Menlo,monospace;color:#dfe6ff;background:rgba(6,8,14,.72);border:1px solid rgba(120,160,255,.25);border-radius:4px;pointer-events:none;z-index:40;white-space:pre';
+      document.body.appendChild(d);
+      this.dbg = d;
+    }
+    this.dbg.textContent = text;
+  }
 }

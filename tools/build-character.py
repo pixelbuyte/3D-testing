@@ -289,14 +289,42 @@ def roughness_to_mr(rough_im, size):
     return Image.fromarray(mr, 'RGB')
 
 
+# ----------------------------------------------------------------------------- characters
+
+# Recolour tuples are (hue°, saturation, value multiplier, value add) applied under a UV mask.
+CHARACTERS = {
+    # blue/cyan swordsman: navy cloth, near-black leather, cyan belts, dark parted hair, no hood
+    'player': dict(hair='Hair_SimpleParted', hood=False, hair_rgb=(6, 7, 10),
+                   cloth=(228, 0.62, 0.50, 0.02), sleeves=(222, 0.55, 0.42, 0.02), leather=(230, 0.30, 0.34, 0.0),
+                   belts=(188, 0.85, 1.05, 0.10), hood_col=None),
+    # orange enemy: black cloth and leather, orange belts, orange hood up
+    'enemy': dict(hair='Hair_Buzzed', hood=True, hair_rgb=(8, 6, 6),
+                  cloth=(230, 0.18, 0.20, 0.0), sleeves=(230, 0.18, 0.18, 0.0), leather=(20, 0.28, 0.16, 0.0),
+                  belts=(28, 0.95, 1.00, 0.12), hood_col=(26, 0.92, 0.85, 0.06)),
+    # black ally/rival: black-navy cloth, dark belts, long dark hair
+    'ally': dict(hair='Hair_Long', hood=False, hair_rgb=(10, 10, 13),
+                 cloth=(232, 0.32, 0.22, 0.0), sleeves=(232, 0.32, 0.20, 0.0), leather=(230, 0.20, 0.16, 0.0),
+                 belts=(215, 0.30, 0.42, 0.02), hood_col=None),
+}
+
+
 # ----------------------------------------------------------------------------- build
 
 def main():
     src = sys.argv[1]
-    out_path = sys.argv[2] if len(sys.argv) > 2 else 'public/assets/characters/player.glb'
+    if '--all' in sys.argv:
+        for name in CHARACTERS:
+            build(src, f'public/assets/characters/{name}.glb', CHARACTERS[name])
+        return
+    which = sys.argv[sys.argv.index('--character') + 1] if '--character' in sys.argv else 'player'
+    out_path = next((a for a in sys.argv[2:] if a.endswith('.glb')), f'public/assets/characters/{which}.glb')
+    build(src, out_path, CHARACTERS[which])
+
+
+def build(src, out_path, cfg):
     P = {
         'body': f'{src}/ubc/x/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf',
-        'hair': f'{src}/ubc/x/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf',
+        'hair': f'{src}/ubc/x/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/' + cfg['hair'] + '.gltf',
         'outfit': f'{src}/outfits/x/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf',
         'ual': f'{src}/ual/x/Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard_RM.glb',
         'kk_general': f'{src}/kaykit/x/KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb',
@@ -348,12 +376,18 @@ def main():
     sleeves = uv_mask(outfit, {'Male_Ranger_Arms'}, MS, lambda n, pi, pr: pr.get('material') == 0)
     leather = uv_mask(outfit, {'Male_Ranger_Arms_Bracer', 'Male_Ranger_Feet_Boots', 'Male_Ranger_Acc_Pauldron'}, MS)
     belts = uv_mask(outfit, {'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_1.001'}, MS)
+    hood = uv_mask(outfit, {'Male_Ranger_Head_Hood'}, MS)
     base = ranger_base.resize((2048, 2048), Image.LANCZOS)
-    # navy cloth, near-black leather, cyan belts and sleeve trim
-    base = recolour(base, cloth, hue=228, sat=0.62, vmul=0.50, vadd=0.02)
-    base = recolour(base, sleeves, hue=222, sat=0.55, vmul=0.42, vadd=0.02)
-    base = recolour(base, leather, hue=230, sat=0.30, vmul=0.34)
-    base = recolour(base, belts, hue=188, sat=0.85, vmul=1.05, vadd=0.10)
+
+    def tint(img, mask, spec):
+        h, sat, vmul, vadd = spec
+        return recolour(img, mask, hue=h, sat=sat, vmul=vmul, vadd=vadd)
+    base = tint(base, cloth, cfg['cloth'])
+    base = tint(base, sleeves, cfg['sleeves'])
+    base = tint(base, leather, cfg['leather'])
+    base = tint(base, belts, cfg['belts'])
+    if cfg.get('hood_col'):
+        base = tint(base, hood, cfg['hood_col'])
     outfit_base_tex = W.image(base.resize((S_OUT, S_OUT), Image.LANCZOS), 'outfit_base', 'JPEG')
     outfit_orm_tex = W.image(resize(ranger_orm, 512), 'outfit_orm', 'JPEG')
     outfit_nrm_tex = W.image(resize(ranger_nrm, S_OUT), 'outfit_normal')
@@ -385,7 +419,8 @@ def main():
         bc = resize(gl.material_texture_image(mat_idx, 'baseColorTexture'), S_HAIR).convert('RGB')
         arr = np.array(bc, dtype=np.float32)
         lum = arr.mean(axis=-1, keepdims=True) / 255.0
-        dark = np.stack([lum * 34 + 6, lum * 34 + 7, lum * 46 + 10], axis=-1)[..., 0, :]  # near-black with a blue cast
+        r0, g0, b0 = cfg['hair_rgb']
+        dark = np.stack([lum * 34 + r0, lum * 34 + g0, lum * 46 + b0], axis=-1)[..., 0, :]  # near-black with a cast
         bc = Image.fromarray(np.clip(dark, 0, 255).astype(np.uint8), 'RGB')
         nr = resize(gl.material_texture_image(mat_idx, 'normalTexture'), 256).convert('RGB')
         W.g['materials'].append({'name': name, 'pbrMetallicRoughness': {'baseColorTexture': {'index': W.image(bc, name + '_base', 'JPEG')}, 'metallicFactor': 0.0, 'roughnessFactor': 0.78},
@@ -435,8 +470,9 @@ def main():
         return sum(len(W.g['accessors'][p['indices']] and [0]) for p in prims)
 
     skin_outfit = add_skin(outfit, outfit.g['skins'][0])
-    for name in ['Male_Ranger_Body', 'Male_Ranger_Legs', 'Male_Ranger_Arms_Bracer', 'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_1.001',
-                 'Male_Ranger_Feet_Boots', 'Male_Ranger_Acc_Pauldron']:
+    parts = ['Male_Ranger_Body', 'Male_Ranger_Legs', 'Male_Ranger_Arms_Bracer', 'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_1.001',
+             'Male_Ranger_Feet_Boots', 'Male_Ranger_Acc_Pauldron'] + (['Male_Ranger_Head_Hood'] if cfg['hood'] else [])
+    for name in parts:
         add_mesh(outfit, name, name.replace('Male_Ranger_', ''), lambda pi, pr: M_OUTFIT, skin_outfit)
     add_mesh(outfit, 'Male_Ranger_Arms', 'Arms', lambda pi, pr: M_OUTFIT if pr.get('material') == 0 else M_HANDS, skin_outfit)
 
@@ -493,6 +529,8 @@ def main():
         ('heavy', 'Sword_Heavy_Combo', 0.0, 0.95, 1.0, False),
         ('dodge', 'Slide_Start', 0.0, 0.62, 0.55, False),
         ('death', 'Hit_Knockback', 0.0, None, 0.35, False),
+        # the sharp recoil at the start of the knockback, before the fall: a sword fighter's flinch
+        ('hit2', 'Hit_Knockback', 0.0, 0.30, 0.12, False),
         ('block', 'Sword_Block', 0.0, None, 0.0, False),
         ('tpose', 'A_TPose', 0.0, 0.04, 0.0, False),
     ]

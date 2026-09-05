@@ -24,6 +24,7 @@ export class Game {
   director: Director;
   npcs: NpcDirector;
   combat: CombatDirector;
+  private debugPanel = false;
   menu: SettingsMenu;
   hero: HeroProp;
   freeCam = false;
@@ -75,9 +76,15 @@ export class Game {
       encounter: (n: number) => this.combat.forceEncounter(n),
       preview: (x: number, z: number, yaw: number, which?: string) => this.combat.preview(x, z, yaw, which as never),
       attack: (k: string) => this.combat.debugAttack(k as never),
-      simulate: (sec: number) => this.combat.simulate(sec, this.input),
+      simulate: (sec: number, step?: number, move?: { x: number; z: number; sprint?: boolean }) => this.simulate(sec, step ?? 1 / 60, move ?? null),
+      hitboxes: (on: boolean) => this.combat.setHitboxes(on),
+      trace: (on: boolean) => { if (on) this.combat.trace = []; const t = this.combat.trace; if (!on) this.combat.trace = null; return t ?? []; },
+      previewOff: () => this.combat.previewOff(),
       enemyHealth: () => this.combat.debugEnemyHealth(),
+      arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => this.combat.forceDuel(hold, dist, place),
+      setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
+      pause: (on: boolean) => { this.paused = on; },
       world: this.world,
     });
 
@@ -122,7 +129,30 @@ export class Game {
     if (!isShotMode) this.input.requestLock();
   }
 
+  /**
+   * Tooling: step the controller and the fight together without rendering, optionally with a
+   * scripted movement intent, so "attack while running" and "hit while strafing" can be tested
+   * at any step size the same way the real loop runs them.
+   */
+  private simulate(seconds: number, step: number, move: { x: number; z: number; sprint?: boolean } | null): void {
+    const n = Math.min(20000, Math.round(seconds / step));
+    const wasEnabled = this.input.enabled;
+    this.input.enabled = true;
+    this.input.override = move;
+    for (let i = 0; i < n; i++) {
+      if (!this.freeCam) this.player.update(step);
+      this.combat.update(step, this.input, this.freeCam);
+      this.input.endFrame();
+    }
+    this.input.override = null;
+    this.input.enabled = wasEnabled;
+  }
+
+  /** tooling: hold the simulation so a capture can read one exact frame */
+  private paused = false;
+
   private update(dt: number): void {
+    if (this.paused) { this.combat.drawDebugFrame(); this.input.endFrame(); return; }
     // Measure against the wall clock, not dt: the engine clamps dt to maxDeltaTime, so dividing by
     // it reports the clamp (a flat 10) rather than the frame rate, which hid a 10x slowdown.
     const now = performance.now();
@@ -132,6 +162,8 @@ export class Game {
 
     if (!this.freeCam) {
       this.player.update(dt);
+      if (this.input.wasPressed('F1')) { this.debugPanel = !this.debugPanel; if (!this.debugPanel) this.hud.setDebugStats(null); }
+      if (this.input.wasPressed('F2')) this.hud.showToast(this.combat.toggleHitboxes() ? 'HITBOXES ON' : 'HITBOXES OFF', 1.5);
       if (this.input.wasPressed('KeyE') && !this.menu.isOpen) {
         // stones first, then whoever is standing next to you
         if (!this.director.interact() && !this.npcs.interact()) this.audio.playInteract('denied');
@@ -147,6 +179,16 @@ export class Game {
     this.npcs.setAwakeness(this.director.activated / 3);
     this.combat.update(dt, this.input, this.freeCam);
     this.hud.setVitals(this.combat.inCombat, this.combat.health01);
+    if (this.debugPanel) {
+      const st = this.stats() as Record<string, unknown>;
+      this.hud.setDebugStats([
+        `fps ${st.fps}  dt ${st.dt}  draw ${st.drawCalls}  tris ${st.triangles}`,
+        `player hp ${st.health}  act ${st.act}  lock ${st.lock}  hitbox ${st.hitOpen ? 'ACTIVE' : '-'}  iframes ${st.iframes}`,
+        `enemies ${st.enemies}  nearest ${st.nearest}  combo ${st.combo}`,
+        `foes ${st.foes}`,
+        `F1 panel  F2 hitboxes`,
+      ].join('\n'));
+    }
     this.applyShake(dt);
 
     this.world.update(dt, this.world.camera.getPosition());

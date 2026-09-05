@@ -167,101 +167,66 @@ enemies**. There are no levels, no loot, no skill trees — the effort went into
   <img src="docs/shots/combat-elite.jpg" width="49%" alt="The horned elite at the awakened shrine">
 </p>
 
-**The cast.** A katana warrior (you), a nunchuck ally who joins from the courtyard onward, and
-masked shadow warriors in three builds — grunt, blade, and one horned elite at the shrine. Each has
-one colour key so they read at a glance across a courtyard: the warrior is black with an indigo
-sash, a white streak in the hair and a saya on the hip; the ally is navy with cyan wraps, a topknot
-and a half-mask; the enemies are black with an orange sash and a pale face plate, under a hood or a
-conical kasa. Shape does the rest: the warrior is vertical and long-limbed, the ally narrower and
-more diagonal, the enemies heavier through the shoulders.
+**The cast.** A katana warrior (you, navy with cyan wraps), a nunchuck ally in black who joins
+from the courtyard onward, and enemies in black with an orange sash and the hood up. All three are
+builds of the **same rigged character**: one 65-joint skeleton, one outfit, one clip set, three
+colourings. There is deliberately no second character system.
 
-**The rig.** Combat needs elbows and knees, which the ambient NPCs (which animate whole body parts)
-cannot do. Fighters use `src/combat/rig.ts`: a nineteen-joint hierarchy where geometry hangs off the
-joint it belongs to and animation is pure local rotation — no skinning, no bone weights. Everything
-a character puts on one joint in one material is merged into a single mesh at build time, so a
-fighter costs about a dozen draw calls rather than thirty.
+**The characters.** `tools/build-character.py --all` assembles the three GLBs offline from
+public-domain packs — Quaternius' Universal rig, fantasy outfit and sword animation library, with
+KayKit locomotion retargeted onto the same skeleton through matching T-poses (sources and licences
+in `docs/CHARACTER_SOURCES.md`). The outfit atlas is recoloured per part from the mesh's own UV
+islands, so a variant is a table of hues and value shifts, not a new texture. Root motion is baked
+into a `RootMotion` node the actor reads back, so a lunge moves the character instead of sliding
+the mesh off its capsule. The katana hangs off a socket under the right hand bone with a fitted
+local transform; the nunchucks use the same socket. Materials are cloned per instance so a hit
+flash lights one body, not every fighter.
 
-**The bodies.** The fighters are faceted on purpose. Every mesh is de-indexed at build time so each
-face gets its own normal (`flatShade` in `src/utils/geometry.ts`), which is what gives a low-poly
-figure crisp planes instead of the soft, blobby look of smooth-shaded primitives. Over the base body
-each character layers a collar, lapels, a sash and knot, shoulder plates, forearm wraps, trousers
-with cuffs and hanging coat panels, so the silhouette has the breaks a real outfit has. Materials
-(`src/combat/materials.ts`) are PBR with generated micro-detail: cloth gets a tiled twill with a
-derived normal map and low gloss, leather a broken grain with higher gloss, and everything carries a
-fresnel rim so a black figure separates from dark wet stone instead of dissolving into it. The blade
-is a deliberately less-metallic steel with a touch of self-light, because a true mirror finish
-reflects the dusk sky and reads as a black rod.
+**The animation** (`src/combat/skinned.ts`) drives PlayCanvas' `AnimEvaluator` directly: two
+locomotion clips blended by real ground speed and kept in phase (the stride rate follows the speed
+so feet do not skate), one action on top that fades in from wherever the body was and fades back
+out over its last stretch, recoveries that chain after a slash, and holds for deaths. Each attack
+clip carries its `swing` / `hitOpen` / `hitClose` events at normalised times, which is the only
+thing that decides when the blade is dangerous. Hit reactions are an additive recoil on the spine
+and head over whatever the body is doing (the packs have no light hit that keeps the feet planted),
+so a flinch never breaks the pose it lands on. Breathing and a lean into travel sit on top.
 
-**Feet and hands.** Two things sold the first fighters as stand-ins: sliding, floating feet and a
-sword held like a torch. Both are fixed structurally rather than pose by pose.
+**Hit detection** (`src/combat/hitdetect.ts`, `actor.ts`, `combat.ts`) is a swept blade, not a
+radius. While an attack's window is pending or open the animation is advanced in sub-steps no
+longer than 1/60 s and the blade's edge is recorded after each one; the samples are laid along the
+root's motion for the frame and swept in order against every body capsule. Each sweep segment
+rotates the blade direction rather than lerping the tip (a straight lerp cuts inside the arc
+exactly where the swing reaches furthest) and is sub-divided by travel so a fast cut cannot tunnel.
+A target is damaged once per swing, only inside the clip's active window, only in front of the
+attacker, and only if an exact segment test against the level colliders finds nothing between the
+attacker's chest and the contact point. The dodge opens 0.25 s of invulnerability. Because the
+sampling rate is fixed and damage is event-driven, the same swing lands the same hit at 60, 30, 20
+or 10 frames per second — the lab scripts assert exactly that. Every number lives in
+`src/combat/config.ts`.
 
-- A clip's foot pitch is an *offset from ground-parallel*: the animator subtracts the hip, thigh and
-  shin pitch each frame, so a planted foot stays flat however deep the stance, and a push-off foot
-  authored at +20 lifts its heel by exactly that.
-- After the pose is applied, the actor measures the lowest sole against the ground and drops the
-  pelvis to meet it (damped and clamped), which puts both soles on the flagstones in a lunge or a
-  wide guard without authoring it per clip. Airborne and prone clips opt out.
-- The katana hangs off the right hand with a fixed grip transform. The left hand is then solved onto
-  the hilt every frame with a two-bone analytic IK (`src/combat/ik.ts`) and its rotation matched to
-  the weapon, so both hands stay on the grip through every swing. Clips where the off hand should
-  let go — a flourish, a fall, a stagger — say so.
+**Feel.** Blade contact → damage → spark → impact sound → recoil → hit-stop (35 ms light, 60 ms
+heavy, 45 ms when you are hit) → a small camera impulse. A ribbon trail is rebuilt each frame from
+the blade's recent positions. Attacks lunge you forward only as far as there is something to close
+on.
 
-<p align="center">
-  <img src="docs/shots/player-skinned.jpg" width="98%" alt="The skinned player in the shrine: low sword carry, mid-slash with the trail, and running">
-</p>
-
-**The player is a skinned character.** The procedural bodies reached the point where cosmetic
-fixes stopped paying, so the player is now a real rigged humanoid: a 65-joint skeleton with
-weighted skin, fingers, knees, elbows and feet, built offline by `tools/build-character.py` from
-public-domain packs (Quaternius' Universal rig, outfit and sword library; KayKit locomotion
-retargeted onto the same skeleton through matching T-poses — sources and licences in
-`docs/CHARACTER_SOURCES.md`). The outfit atlas is recoloured per part from the mesh's own UV
-islands, so the body is navy, the leather near-black and the belts cyan without touching the
-detail underneath. At runtime (`src/combat/skinned.ts`) the GLB's clips are blended by the same
-rules as the procedural animator — two locomotion clips by speed, one action on top that fades in
-from wherever the body was — and fire the same `swing` / `hitOpen` / `hitClose` events the combat
-director already listens for. Root motion is baked into a `RootMotion` node the actor reads back,
-so a lunge moves the character rather than sliding the mesh off its capsule. The katana hangs off a
-`WeaponSocket` entity under the right hand bone with a fixed local offset; nothing copies world
-transforms per frame. The ally and the enemies are still the procedural rig until the player has
-passed visual QA, which is deliberate: one character had to be completely right before the
-pipeline is applied to the rest.
-
-**The animation.** Poses are hand-authored keyframes (`src/combat/clips.ts`) evaluated by a small
-animator that exists mainly to avoid the two things that make procedural characters look robotic:
-
-- **Per-key easing.** A key carries its own curve, so a slash accelerates out of its wind-up
-  (`in`), overshoots into the impact (`snap`), and springs back rather than sliding home
-  (`settle`, a damped cosine).
-- **Cross-fades from a snapshot.** A state change blends from wherever the body actually was, so
-  interrupting a combo never pops.
-- **An upper-body mask.** Light attacks only write the spine and arms, so you can swing while
-  running and the legs keep their stride.
-- Additive breathing, a lean into travel, and a head that tracks what you are fighting sit on top of
-  whatever clip is playing.
-
-Every strike is built as anticipation → accelerate → impact → follow-through → recover, and the
-damage window is opened and closed by **animation events**, not a timer — so a hit lands on the
-frame the blade is actually through the target.
-
-**Feel.** Hit-stop freezes the frame for 40–75 ms on contact; a two-axis decaying shake rides on top
-of wherever the camera already is; a ribbon trail is rebuilt each frame from the blade's recent
-positions, which is the single cheapest thing that turns four keyframes into an arc the eye can
-follow. Attacks lunge you forward — but only as far as there is something to close on, since an
-attack that always slides you a metre walks you out of the fight when you swing at air.
-
-**Enemy behaviour** is a flat state machine (idle → chase → wind-up → attack → recover, plus stagger
-and a dissolve on defeat) with one addition that matters more than the rest: **only one enemy holds
-the attack token at a time**. The others circle at a readable distance. Without it, three enemies
-commit at once, which is both impossible to defend and impossible to read.
+**Enemy behaviour** is the state machine `idle → alert → approach → combatIdle → attack → recover
+→ combatIdle`, plus `hit`, `stagger` and `dying`. An enemy notices you inside the alert radius,
+closes to attack range, faces you, waits out its cooldown, swings, steps back, and repeats. A light
+hit interrupts a wind-up half the time, is a short flinch outside a swing, and is absorbed during
+the cut itself; a heavy always staggers. Waiting enemies hold ring slots with hysteresis, and
+**only one enemy holds the attack token at a time**. A dead enemy never attacks: death clears the
+window and the token on the frame it happens.
 
 **Encounters** are staged along the existing route — two at the outer gate to teach the loop, three
 in the courtyard where the ally arrives, and the elite at the awakened shrine. The camera swings out
-to a third-person boom when a fight starts and eases back to first person when it clears; the boom
-pulls in when it would clip geometry.
+to a third-person boom when a fight starts and eases back to first person when it clears.
 
-Combat costs about **0.4 ms of CPU per frame** for five fighters, and the effects are fixed-size
-pools that never allocate mid-fight.
+**Debug and testing.** `F1` shows a stats panel (frame time, draw calls, action, lock, window,
+i-frames, enemy states); `F2` draws the hurt capsules, every sweep chain (green while dangerous,
+red on the frame it connects) and the contact points. Both are off in normal play. The
+`window.__ECHOES` hooks (`arena`, `simulate`, `attack`, `setYaw`, `trace`, `enemyHealth`) let a
+headless script stage a 1v1 and step it at any frame time without rendering; the hit, duel,
+movement, wall and slope labs in the development log run on them.
 
 ---
 

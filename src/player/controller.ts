@@ -213,6 +213,9 @@ export class PlayerController extends Emitter<PlayerEvents> {
    */
   nudgeYaw(d: number): void { this.targetYaw += d; this.yaw += d * 0.6; }
 
+  /** Face an absolute yaw at once (tooling). */
+  setYaw(r: number): void { this.targetYaw = r; this.yaw = r; }
+
   /** 0 while first-person, 1 once the third-person boom is fully out. */
   get thirdPersonBlend(): number { return this.tpBlend; }
 

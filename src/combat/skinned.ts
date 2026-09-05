@@ -6,7 +6,7 @@ import type { EngineContext } from '@/core/engine';
 import type { Clip, FighterAnimator } from './anim';
 import type { Fighter } from './characters';
 import { applyRim } from './materials';
-import { buildKatana } from './weapons';
+import { buildKatana, buildNunchucks, type WeaponBuild } from './weapons';
 import { clamp01 } from '@/utils/math';
 
 /**
@@ -40,6 +40,13 @@ interface SkinnedClipDef {
   rootMotion?: number;
   /** false for airborne or prone clips */
   ground?: boolean;
+  /**
+   * Instead of a track: an additive upper-body recoil over whatever the body is doing, for the
+   * given seconds. The source packs have no light hit reaction that keeps the feet planted (the
+   * knockback is on the ground within 0.2 s), and a recoil layered on the stance never breaks the
+   * pose it lands on. Strength 1 is a light hit.
+   */
+  flinch?: { strength: number; dur: number };
 }
 
 /** procedural clip name (what the director passes) → how the skinned body plays it */
@@ -53,11 +60,49 @@ const PLAYER_CLIPS: Record<string, SkinnedClipDef> = {
   slash3: { track: 'slash3', rootMotion: 1, events: [{ t: 0.34, name: 'swing' }, { t: 0.40, name: 'hitOpen' }, { t: 0.64, name: 'hitClose' }] },
   heavy: { track: 'heavy', rootMotion: 1, events: [{ t: 0.38, name: 'swing' }, { t: 0.44, name: 'hitOpen' }, { t: 0.70, name: 'hitClose' }] },
   dodge: { track: 'dodge', rootMotion: 1 },
-  hit: { track: 'hit' },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
   death: { track: 'death', hold: true, rootMotion: 1, ground: false },
   slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
+
+const SWING = (t0: number, t1: number, t2: number) => [{ t: t0, name: 'swing' }, { t: t1, name: 'hitOpen' }, { t: t2, name: 'hitClose' }];
+
+/** the orange swordsman: the director's enemy clip names onto the same tracks */
+const ENEMY_CLIPS: Record<string, SkinnedClipDef> = {
+  idle: { track: 'idle', loop: true },
+  guard: { track: 'guard', loop: true },
+  enemyIdle: { track: 'guard', loop: true },
+  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
+  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  enemyRun: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  enemyAttack: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: SWING(0.28, 0.36, 0.80) },
+  enemyAttack2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
+  enemyHeavy: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
+  stagger: { track: 'guard', flinch: { strength: 1.7, dur: 0.55 } },
+  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
+  slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
+  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
+};
+
+/** the nunchuck ally: fast strikes on the short sword clips, the spin on the heavy */
+const ALLY_CLIPS: Record<string, SkinnedClipDef> = {
+  idle: { track: 'idle', loop: true },
+  guard: { track: 'guard', loop: true },
+  nunIdle: { track: 'guard', loop: true },
+  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
+  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  nunCombo: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
+  nunFlourish: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
+  dodge: { track: 'dodge', rootMotion: 1 },
+  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
+  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
+  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
+};
+
+export type Variant = 'player' | 'enemy' | 'ally';
+const CLIP_TABLES: Record<Variant, Record<string, SkinnedClipDef>> = { player: PLAYER_CLIPS, enemy: ENEMY_CLIPS, ally: ALLY_CLIPS };
 
 // ------------------------------------------------------------------ loading
 
@@ -115,9 +160,12 @@ export class SkinnedAnimator implements FighterAnimator {
   private onEvent: (name: string) => void = () => {};
   private time = 0;
   private spine: Entity | null;
+  private spineLow: Entity | null;
   private head: Entity | null;
   private spineRest = new Quat();
+  private spineLowRest = new Quat();
   private headRest = new Quat();
+  private flinch: { t: number; dur: number; strength: number; loop: boolean } | null = null;
   private tmpQ = new Quat();
   private tmpQ2 = new Quat();
   private pendingLunge = 0;
@@ -141,6 +189,7 @@ export class SkinnedAnimator implements FighterAnimator {
       this.rmCurves.set(name, rootMotionCurve(track));
     }
     this.spine = char.entity.findByName('spine_02') as Entity | null;
+    this.spineLow = char.entity.findByName('spine_01') as Entity | null;
     this.head = char.entity.findByName('Head') as Entity | null;
   }
 
@@ -164,6 +213,12 @@ export class SkinnedAnimator implements FighterAnimator {
   }
 
   private start(name: string, def: SkinnedClipDef, fadeDur: number, loop: boolean, recovery: boolean): number {
+    if (def.flinch) {
+      // a hit interrupts whatever the body was doing; the recoil rides on top of the stance it fades to
+      this.stopAction();
+      this.flinch = { t: 0, dur: def.flinch.dur, strength: def.flinch.strength, loop };
+      return def.flinch.dur;
+    }
     const ac = this.clips.get(def.track);
     if (!ac) return 0.5;
     // the outgoing action keeps playing under the new one for the length of the fade
@@ -192,6 +247,13 @@ export class SkinnedAnimator implements FighterAnimator {
   get grounded(): boolean { return this.action?.def.ground !== false; }
   /** the skinned hands come from the animation itself; nothing to solve */
   get offHandOnWeapon(): boolean { return false; }
+
+  get sweeping(): boolean {
+    const ac = this.action;
+    if (!ac || !ac.def.events) return false;
+    for (const ev of ac.def.events) if (ev.name === 'hitClose' && ev.t > ac.firedTo) return true;
+    return false;
+  }
 
   consumeLunge(_dt: number): number {
     const v = this.pendingLunge;
@@ -270,16 +332,35 @@ export class SkinnedAnimator implements FighterAnimator {
       }
     }
 
-    // --- additive life on top of the blend: breathing in the chest, the head tracking a target
+    // --- the hit recoil: a sharp snap back over the first fifth, then it eases out
+    let fl = 0;
+    if (this.flinch) {
+      const f = this.flinch;
+      f.t += dt;
+      if (f.t >= f.dur) { if (f.loop) f.t -= f.dur; else this.flinch = null; }
+      if (this.flinch) {
+        // snap in over the first 15%, hold through 40%, then ease back to the stance
+        const e = f.t / f.dur;
+        fl = (e < 0.15 ? e / 0.15 : e < 0.4 ? 1 : 1 - easeIn((e - 0.4) / 0.6)) * f.strength;
+      }
+    }
+
+    // --- additive life on top of the blend: breathing in the chest, the recoil, the head tracking a target
     if (this.spine) {
       const br = Math.sin(this.time * 1.5) * this.breathe * 1.2 + this.lean * 5;
-      this.tmpQ.setFromEulerAngles(br, 0, this.leanSide * 3);
+      this.tmpQ.setFromEulerAngles(br - 24 * fl, 8 * fl, this.leanSide * 3 + 9 * fl);
       this.spineRest.copy(this.spine.getLocalRotation());
       this.tmpQ2.mul2(this.spineRest, this.tmpQ);
       this.spine.setLocalRotation(this.tmpQ2);
     }
-    if (this.head && (this.lookYaw !== 0 || this.lookPitch !== 0)) {
-      this.tmpQ.setFromEulerAngles(this.lookPitch, this.lookYaw, 0);
+    if (this.spineLow && fl > 0) {
+      this.tmpQ.setFromEulerAngles(-12 * fl, 4 * fl, 5 * fl);
+      this.spineLowRest.copy(this.spineLow.getLocalRotation());
+      this.tmpQ2.mul2(this.spineLowRest, this.tmpQ);
+      this.spineLow.setLocalRotation(this.tmpQ2);
+    }
+    if (this.head && (this.lookYaw !== 0 || this.lookPitch !== 0 || fl > 0)) {
+      this.tmpQ.setFromEulerAngles(this.lookPitch + 22 * fl, this.lookYaw - 10 * fl, 6 * fl);
       this.headRest.copy(this.head.getLocalRotation());
       this.tmpQ2.mul2(this.headRest, this.tmpQ);
       this.head.setLocalRotation(this.tmpQ2);
@@ -306,6 +387,7 @@ export class SkinnedAnimator implements FighterAnimator {
 }
 
 function easeOut(t: number): number { return 1 - (1 - t) ** 3; }
+function easeIn(t: number): number { return t * t; }
 
 /** Pull the RootMotion node's translation curve out of a track, as forward metres over time. */
 function rootMotionCurve(track: AnimTrack): RootMotionCurve | null {
@@ -349,56 +431,85 @@ export interface SocketTransform { pos: [number, number, number]; quat: [number,
  */
 export const KATANA_SOCKET: SocketTransform = { pos: [-0.031, 0.111, -0.005], quat: [0.19326, 0.09009, 0.28395, 0.93483], grip: 0.09 };
 
-export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResource): Fighter {
+export interface FighterOpts { scale?: number }
+
+/** One body builder for every fighter: same GLB pipeline, same socket, a different palette, weapon and clip table. */
+export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResource, variant: Variant, opts: FighterOpts = {}): Fighter {
   const char = instantiateCharacter(container);
-  const root = new Entity('player-body');
+  const scale = opts.scale ?? 1;
+  const root = new Entity(`${variant}-body`);
   // the GLB faces +Z; the game's forward is -Z
   const model = new Entity('model');
   model.setLocalEulerAngles(0, 180, 0);
+  model.setLocalScale(scale, scale, scale);
   root.addChild(model);
   model.addChild(char.entity);
 
   // materials: keep the atlas's own detail, add the fresnel rim the environment lighting needs
+  // materials: instances share the container's materials, and the hit flash writes emissive, so
+  // every body gets its own copies (cloned once per name, shared across that body's meshes)
   const mats = new Map<string, StandardMaterial>();
   for (const r of char.entity.findComponents('render') as RenderComponent[]) {
     for (const mi of r.meshInstances) {
-      const m = mi.material as StandardMaterial;
-      if (!mats.has(m.name)) mats.set(m.name, m);
+      const src = mi.material as StandardMaterial;
+      let m = mats.get(src.name);
+      if (!m) { m = src.clone(); m.name = src.name; mats.set(src.name, m); }
+      mi.material = m;
     }
   }
+  const rim: [number, number, number] = variant === 'enemy' ? [0.95, 0.55, 0.30] : variant === 'ally' ? [0.72, 0.76, 0.92] : [0.55, 0.72, 0.95];
   for (const [name, m] of mats) {
-    if (name === 'outfit') applyRim(m, [0.55, 0.72, 0.95], 0.34, 3.0);
+    if (name === 'outfit') applyRim(m, rim, 0.34, 3.0);
     else if (name.startsWith('skin')) applyRim(m, [0.9, 0.62, 0.5], 0.2, 3.5);
-    else if (name === 'hair' || name === 'brows') applyRim(m, [0.55, 0.68, 0.9], 0.4, 2.6);
+    else if (name === 'hair' || name === 'brows') applyRim(m, rim, 0.4, 2.6);
     m.update();
   }
 
-  // the weapon: a socket under the hand bone, then the katana with a local offset inside it
+  // the weapon: a socket under the hand bone, then the weapon with a local offset inside it
   const hand = char.entity.findByName('hand_r') as Entity;
   const socket = new Entity('WeaponSocket');
   socket.setLocalPosition(KATANA_SOCKET.pos[0], KATANA_SOCKET.pos[1], KATANA_SOCKET.pos[2]);
   socket.setLocalRotation(new Quat(KATANA_SOCKET.quat[0], KATANA_SOCKET.quat[1], KATANA_SOCKET.quat[2], KATANA_SOCKET.quat[3]));
   hand.addChild(socket);
-  const katana = buildKatana(ctx,
-    characterMaterialFor(ctx, 'steel', new Color(0.84, 0.87, 0.92), 'blade'),
-    characterMaterialFor(ctx, 'wrap', new Color(0.10, 0.14, 0.20), 'leather'),
-    characterMaterialFor(ctx, 'fitting', new Color(0.20, 0.70, 0.80), 'metal'));
-  katana.entity.setLocalPosition(0, -KATANA_SOCKET.grip, 0);
-  socket.addChild(katana.entity);
+  let weapon: WeaponBuild;
+  let freeChuck: Entity | undefined;
+  if (variant === 'ally') {
+    const chucks = buildNunchucks(ctx,
+      characterMaterialFor(ctx, variant, 'wood', new Color(0.12, 0.10, 0.10), 'leather'),
+      characterMaterialFor(ctx, variant, 'metal', new Color(0.62, 0.64, 0.70), 'metal'),
+      characterMaterialFor(ctx, variant, 'cap', new Color(0.75, 0.85, 1.0), 'metal'));
+    chucks.entity.setLocalPosition(0, -0.10, 0);
+    socket.addChild(chucks.entity);
+    weapon = chucks;
+    freeChuck = chucks.free;
+  } else {
+    const enemy = variant === 'enemy';
+    const katana = buildKatana(ctx,
+      characterMaterialFor(ctx, variant, 'steel', enemy ? new Color(0.62, 0.62, 0.66) : new Color(0.84, 0.87, 0.92), 'blade'),
+      characterMaterialFor(ctx, variant, 'wrap', enemy ? new Color(0.08, 0.07, 0.07) : new Color(0.10, 0.14, 0.20), 'leather'),
+      characterMaterialFor(ctx, variant, 'fitting', enemy ? new Color(0.90, 0.45, 0.12) : new Color(0.20, 0.70, 0.80), 'metal'));
+    katana.entity.setLocalPosition(0, -KATANA_SOCKET.grip, 0);
+    socket.addChild(katana.entity);
+    weapon = katana;
+  }
 
-  const animator = new SkinnedAnimator(char);
+  const animator = new SkinnedAnimator(char, CLIP_TABLES[variant]);
   const chestNode = char.entity.findByName('spine_02') as Entity;
   const chestPos = new Vec3();
   const outfit = mats.get('outfit');
   return {
-    root, scale: 1, height: 1.81, weapon: katana, weaponEntity: katana.entity, animator,
+    root, scale, height: 1.81 * scale, weapon, weaponEntity: weapon.entity, animator, freeChuck,
     flashMats: outfit ? [outfit] : [],
     chest: () => chestPos.copy(chestNode.getPosition()),
     destroy: () => root.destroy(),
   };
 }
 
+export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResource): Fighter {
+  return makeSkinnedFighter(ctx, container, 'player');
+}
+
 import { characterMaterial } from './materials';
-function characterMaterialFor(ctx: EngineContext, name: string, c: Color, kind: 'blade' | 'leather' | 'metal'): StandardMaterial {
-  return characterMaterial(ctx, `player-${name}`, c, { kind });
+function characterMaterialFor(ctx: EngineContext, variant: Variant, name: string, c: Color, kind: 'blade' | 'leather' | 'metal'): StandardMaterial {
+  return characterMaterial(ctx, `${variant}-${name}`, c, { kind });
 }
