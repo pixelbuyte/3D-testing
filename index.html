@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Echoes of the Shrine</title>
+  <meta name="description" content="A small cinematic 3D browser game. Find and awaken the three ancient stones of a forgotten mountain shrine." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <canvas id="gl" tabindex="0"></canvas>
+
+  <div id="loading" aria-live="polite">
+    <canvas id="loading-bg"></canvas>
+    <div class="loading-vignette"></div>
+    <div class="loading-content">
+      <div class="eyebrow">A SMALL CINEMATIC GAME</div>
+      <h1 class="title"><span>ECHOES</span><span class="of">of the</span><span>SHRINE</span></h1>
+      <div class="progress"><div class="bar"></div></div>
+      <div class="status">Preparing the mountain…</div>
+      <button class="enter" type="button" hidden>ENTER THE SHRINE</button>
+      <div class="hint" hidden>WASD move · Mouse look · Shift sprint · Space hop · E attune · Esc settings</div>
+    </div>
+    <div class="loading-footer">
+      <span class="renderer"></span>
+    </div>
+  </div>
+
+  <div id="hud" hidden>
+    <div id="objective"><span class="rule"></span><span class="text"></span></div>
+    <div id="prompt" hidden><span class="key">E</span><span class="label">ATTUNE</span></div>
+    <div id="crosshair"></div>
+    <div id="toast"></div>
+    <div id="vitals"><span class="cap">VITALITY</span><div class="bar"><div class="fill"></div></div></div>
+    <div id="letterbox"><div class="top"></div><div class="bottom"></div></div>
+    <div id="finale" hidden>
+      <div class="eyebrow">THE SHRINE REMEMBERS</div>
+      <div class="big">ECHOES OF THE SHRINE</div>
+      <div class="sub">You awakened the three stones.</div>
+      <button class="again" type="button">WALK THE PATH AGAIN</button>
+    </div>
+  </div>
+
+  <div id="damage"></div>
+  <div id="grain"></div>
+  <div id="fade"></div>
+
+  <div id="menu" hidden>
+    <div class="panel">
+      <div class="menu-title">SETTINGS</div>
+      <div class="row"><label>Graphics preset</label>
+        <div class="seg" data-setting="preset">
+          <button data-value="ultra">ULTRA</button><button data-value="high">HIGH</button><button data-value="medium">MEDIUM</button>
+        </div>
+      </div>
+      <div class="row"><label>Render scale <span class="val" data-val="renderScale"></span></label><input type="range" min="0.5" max="1.5" step="0.05" data-setting="renderScale" /></div>
+      <div class="row"><label>Dynamic resolution</label><input type="checkbox" data-setting="dynamicResolution" /></div>
+      <div class="row"><label>Foliage density <span class="val" data-val="foliageDensity"></span></label><input type="range" min="0.25" max="1.5" step="0.05" data-setting="foliageDensity" /></div>
+      <div class="row"><label>Depth of field</label><input type="checkbox" data-setting="dof" /></div>
+      <div class="row"><label>Film grain</label><input type="checkbox" data-setting="grain" /></div>
+      <div class="row"><label>Mouse sensitivity <span class="val" data-val="sensitivity"></span></label><input type="range" min="0.3" max="2.5" step="0.05" data-setting="sensitivity" /></div>
+      <div class="row"><label>Field of view <span class="val" data-val="fov"></span></label><input type="range" min="60" max="100" step="1" data-setting="fov" /></div>
+      <div class="row"><label>Master volume <span class="val" data-val="volume"></span></label><input type="range" min="0" max="1" step="0.05" data-setting="volume" /></div>
+      <div class="sep"></div>
+      <div class="menu-title small">SHRINE MODEL</div>
+      <div class="row"><label>Central statue</label>
+        <select data-setting="heroModel">
+          <option value="gothic_statue">Stone guardian (default)</option>
+          <option value="Lantern_01">Iron lantern</option>
+          <option value="wooden_lantern_01">Wooden lantern</option>
+          <option value="brass_diya_lantern">Brass diya</option>
+          <option value="boulder_01">Mossy boulder</option>
+          <option value="custom">Custom GLB…</option>
+        </select>
+      </div>
+      <div class="row custom-model" hidden><label>Custom GLB URL</label><input type="text" data-setting="customModelUrl" placeholder="https://…/model.glb" /></div>
+      <div class="row custom-model" hidden><label>…or load a file</label><input type="file" accept=".glb,.gltf" data-file="customModel" /></div>
+      <div class="sep"></div>
+      <div class="row"><button class="btn" data-action="restart">RESTART</button><button class="btn primary" data-action="resume">RESUME</button></div>
+      <div class="stats"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

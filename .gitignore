@@ -1,0 +1,12 @@
+node_modules/
+dist/
+assets-src/
+.vite/
+*.log
+.DS_Store
+screenshots/
+demo/plates/
+demo/caps/
+demo/score.wav
+public/_dev/
+__pycache__/
