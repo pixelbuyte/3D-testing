@@ -30,6 +30,10 @@ until the 1v1 passes its checklist, and that checklist was completed only at the
   heavy 60 ms, hurt 45 ms) → camera impulse.
 - **Debug mode**: F1 stats panel, F2 hitbox overlay (capsules, sweep chains green/red, contact
   points). Both off in normal play.
+- **Sweep precision counters**: every attack has an id, every damage event is logged with
+  attacker, target and amount, the animator reports anticipation / active / recovery, and the F1
+  panel shows the attack id, frame phase, window state and the last damage events. The hit lab
+  asserts that no attack id damages the same target twice.
 - **Test tooling**: `__ECHOES.arena(hold, dist, place)`, `simulate(sec, step, move)` (steps the
   controller and the fight together with a scripted movement intent), `trace(on)`, `setYaw`,
   `enemyHealth()` with stable ids, `preview('hit')`.
@@ -44,6 +48,16 @@ hitdetect,skinned}.ts` (rig.ts and ik.ts deleted), `src/core/debug.ts`, `src/gam
 
 ## Bugs fixed this session
 
+- **"Pixelated" characters, two causes.** (1) The recolour masks stopped exactly at the UV
+  island edges, so the gutters between islands kept the source atlas's pale colour; bilinear
+  filtering and every mip level read a texel or two past the edge and put a bright speckled
+  fringe on every panel of the outfit. The tint masks are now grown into the gutters before
+  tinting (nearest-part propagation in the build tool), the base is written at JPEG quality 94 and
+  the cloth normal map is softened, so the outfit reads as clean colour blocks. (2) Adaptive
+  resolution on the high and medium presets dropped the render scale to 60% (48% effective on
+  medium) whenever a frame took over 20 ms, which pixelates the sharp dark fighters while fog hides
+  it on the scenery. The floor is now 85%, the medium preset starts at 90%, and the controller only
+  steps down below ~45 fps and back up above ~62 fps.
 - **Hits were frame-rate dependent.** The swept blade was rebuilt from two poses a frame apart; at
   1/20 s the second combo hit was lost and at 1/10 s nothing landed. Fixed by sampling the
   animation at a fixed rate while a window is pending (see Completed). Verified at 1/60 … 1/10.

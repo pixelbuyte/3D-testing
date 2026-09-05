@@ -42,7 +42,7 @@ const PRESETS: Record<Preset, Partial<Settings>> = {
     foliageDensity: 1.0, particleScale: 1.0, mistLayers: 9, godRays: true, anisotropy: 8,
   },
   medium: {
-    renderScale: 0.8, dynamicResolution: true, shadowResolution: 2048, shadowDistance: 70, cascades: 3,
+    renderScale: 0.9, dynamicResolution: true, shadowResolution: 2048, shadowDistance: 70, cascades: 3,
     softShadows: false, ssao: true, ssaoSamples: 6, taa: true, bloom: true, dof: false, dofHighQuality: false,
     foliageDensity: 0.6, particleScale: 0.6, mistLayers: 5, godRays: false, anisotropy: 4,
   },

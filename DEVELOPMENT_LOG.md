@@ -188,3 +188,11 @@ is deleted.
 **Testing.** Hit lab (with the id assertion), AI duel and movement lab running against the
 rebuilt GLBs; close-up render of the player at the high preset and the frozen-frame overlay
 queued on the production build.
+
+**20:35 addendum — second cause of the pixelated look.** The close-up render at the high preset
+came out soft even with the fixed atlas: adaptive resolution had ratcheted the render scale down
+to 60% (the medium preset starts at 80%, so 48% effective) because the SwiftShader frames were
+over 20 ms — exactly what a mid-range GPU does at 1440p. The sharp dark fighters show the
+upscale long before the fogged scenery does. The floor is now 85%, medium starts at 90%, and the
+controller steps down only below ~45 fps and back up above ~62 fps (`src/rendering/postfx.ts`).
+The capture scripts pin `scale=1` so renders judge the assets, not the frame rate.
