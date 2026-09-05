@@ -25,6 +25,10 @@ async function boot(): Promise<void> {
   await loading.waitForEnter(isShotMode);
   loading.hide();
   game.start();
+  if (urlParams.get('atelier') === '1') {
+    const { installAtelier } = await import('@/characters/atelier');
+    installAtelier(engine, game);
+  }
 }
 
 boot().catch((err) => {

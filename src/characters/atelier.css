@@ -1,0 +1,17 @@
+.character-atelier {
+  position: fixed; z-index: 100; inset: auto 18px 18px; max-width: 680px;
+  padding: 16px 20px; color: #e2edf0; background: #121d2eed;
+  border: 1px solid #58818d; border-radius: 10px;
+  font: 13px/1.5 system-ui, sans-serif; pointer-events: auto;
+}
+.character-atelier h1 { font-size: 18px; margin: 0; letter-spacing: .04em; }
+.character-atelier p { margin: 5px 0 12px; }
+.character-atelier label { display: inline-flex; align-items: center; gap: 7px; margin: 0 12px 10px 0; }
+.character-atelier select, .character-atelier button {
+  color: #e2edf0; background: #243747; border: 1px solid #65899a;
+  border-radius: 4px; padding: 6px; font: inherit;
+}
+.character-atelier input { accent-color: #65d2d8; max-width: 32vw; }
+.character-atelier a { color: #80dce1; }
+.character-atelier .atelier-note { font-size: 12px; color: #c2cbd0; }
+.character-atelier :focus-visible { outline: 2px solid #80dce1; outline-offset: 3px; }

@@ -7,6 +7,7 @@
   "scripts": {
     "characters:build": "python3 tools/style-characters.py && node tools/optimize-characters.mjs && node tools/export-weapons.mjs && python3 tools/validate-characters.py",
     "characters:validate": "python3 tools/validate-characters.py",
+    "characters:test": "node tools/test-character-compatibility.mjs && npm run characters:validate",
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
