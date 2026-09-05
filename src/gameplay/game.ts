@@ -84,6 +84,7 @@ export class Game {
       arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => this.combat.forceDuel(hold, dist, place),
       setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
+      pause: (on: boolean) => { this.paused = on; },
       world: this.world,
     });
 
@@ -147,7 +148,11 @@ export class Game {
     this.input.enabled = wasEnabled;
   }
 
+  /** tooling: hold the simulation so a capture can read one exact frame */
+  private paused = false;
+
   private update(dt: number): void {
+    if (this.paused) { this.input.endFrame(); return; }
     // Measure against the wall clock, not dt: the engine clamps dt to maxDeltaTime, so dividing by
     // it reports the clamp (a flat 10) rather than the frame rate, which hid a 10x slowdown.
     const now = performance.now();

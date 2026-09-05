@@ -23,6 +23,8 @@ export interface DebugHooks {
   trace?: (on: boolean) => Record<string, unknown>[];
   previewOff?: () => void;
   freeCam: (on: boolean) => void;
+  /** tooling: freeze the game loop (simulate() still steps it) so a capture reads one exact frame */
+  pause?: (on: boolean) => void;
   world?: unknown;
 }
 

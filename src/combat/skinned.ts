@@ -339,27 +339,28 @@ export class SkinnedAnimator implements FighterAnimator {
       f.t += dt;
       if (f.t >= f.dur) { if (f.loop) f.t -= f.dur; else this.flinch = null; }
       if (this.flinch) {
+        // snap in over the first 15%, hold through 40%, then ease back to the stance
         const e = f.t / f.dur;
-        fl = (e < 0.2 ? e / 0.2 : 1 - easeIn((e - 0.2) / 0.8)) * f.strength;
+        fl = (e < 0.15 ? e / 0.15 : e < 0.4 ? 1 : 1 - easeIn((e - 0.4) / 0.6)) * f.strength;
       }
     }
 
     // --- additive life on top of the blend: breathing in the chest, the recoil, the head tracking a target
     if (this.spine) {
       const br = Math.sin(this.time * 1.5) * this.breathe * 1.2 + this.lean * 5;
-      this.tmpQ.setFromEulerAngles(br - 13 * fl, 0, this.leanSide * 3 + 6 * fl);
+      this.tmpQ.setFromEulerAngles(br - 24 * fl, 8 * fl, this.leanSide * 3 + 9 * fl);
       this.spineRest.copy(this.spine.getLocalRotation());
       this.tmpQ2.mul2(this.spineRest, this.tmpQ);
       this.spine.setLocalRotation(this.tmpQ2);
     }
     if (this.spineLow && fl > 0) {
-      this.tmpQ.setFromEulerAngles(-8 * fl, 0, 4 * fl);
+      this.tmpQ.setFromEulerAngles(-12 * fl, 4 * fl, 5 * fl);
       this.spineLowRest.copy(this.spineLow.getLocalRotation());
       this.tmpQ2.mul2(this.spineLowRest, this.tmpQ);
       this.spineLow.setLocalRotation(this.tmpQ2);
     }
     if (this.head && (this.lookYaw !== 0 || this.lookPitch !== 0 || fl > 0)) {
-      this.tmpQ.setFromEulerAngles(this.lookPitch + 16 * fl, this.lookYaw - 6 * fl, 0);
+      this.tmpQ.setFromEulerAngles(this.lookPitch + 22 * fl, this.lookYaw - 10 * fl, 6 * fl);
       this.headRest.copy(this.head.getLocalRotation());
       this.tmpQ2.mul2(this.headRest, this.tmpQ);
       this.head.setLocalRotation(this.tmpQ2);
