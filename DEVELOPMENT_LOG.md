@@ -205,3 +205,7 @@ landing 0, the lunging third and the heavy connecting — the light attacks' hon
 ≈2.0 m from body centre (the wall lab's open-ground control at 2.05 m still lands 12 / 14 / 18 /
 21). Identical at 1/60, 1/30, 1/20 and 1/10 s; no attack id damages the same target twice;
 through the lantern pillar still 0 / 0 / 0 / 0. PR #3 merged; this goes out as a fresh PR.
+
+**20:36 addendum — verified.** Close-up of the player at the high preset with the render scale
+pinned to 100%: solid navy panels, cyan belt, no seam speckle, clean silhouette edges, sword in
+the hand; the ally behind reads as clean black. PRs #3 and #4 merged; the branch is back on main.
