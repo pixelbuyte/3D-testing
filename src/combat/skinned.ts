@@ -462,6 +462,7 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
   const rim: [number, number, number] = variant === 'enemy' ? [0.95, 0.55, 0.30] : variant === 'ally' ? [0.72, 0.76, 0.92] : [0.55, 0.72, 0.95];
   for (const [name, m] of mats) {
     if (name === 'outfit') applyRim(m, rim, 0.34, 3.0);
+    else if (name.startsWith('shrine_')) applyRim(m, rim, 0.18, 3.0);
     else if (name.startsWith('skin')) applyRim(m, [0.9, 0.62, 0.5], 0.2, 3.5);
     else if (name === 'hair' || name === 'brows') applyRim(m, rim, 0.4, 2.6);
     m.update();
@@ -469,10 +470,15 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
 
   // the weapon: a socket under the hand bone, then the weapon with a local offset inside it
   const hand = char.entity.findByName('hand_r') as Entity;
-  const socket = new Entity('WeaponSocket');
-  socket.setLocalPosition(KATANA_SOCKET.pos[0], KATANA_SOCKET.pos[1], KATANA_SOCKET.pos[2]);
-  socket.setLocalRotation(new Quat(KATANA_SOCKET.quat[0], KATANA_SOCKET.quat[1], KATANA_SOCKET.quat[2], KATANA_SOCKET.quat[3]));
-  hand.addChild(socket);
+  const authoredSocket = char.entity.findByName('WeaponSocket_R') as Entity | null;
+  const socket = authoredSocket ?? new Entity('WeaponSocket');
+  if (authoredSocket) {
+    if (authoredSocket.parent !== hand) throw new Error(`${variant}: WeaponSocket_R must be under hand_r`);
+  } else {
+    socket.setLocalPosition(...KATANA_SOCKET.pos);
+    socket.setLocalRotation(new Quat(...KATANA_SOCKET.quat));
+    hand.addChild(socket);
+  }
   let weapon: WeaponBuild;
   let freeChuck: Entity | undefined;
   if (variant === 'ally') {
@@ -480,7 +486,8 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
       characterMaterialFor(ctx, variant, 'wood', new Color(0.12, 0.10, 0.10), 'leather'),
       characterMaterialFor(ctx, variant, 'metal', new Color(0.62, 0.64, 0.70), 'metal'),
       characterMaterialFor(ctx, variant, 'cap', new Color(0.75, 0.85, 1.0), 'metal'));
-    chucks.entity.setLocalPosition(0, -0.10, 0);
+    // Preserve the established set; the Astra locator seats the held baton's midpoint in the palm.
+    chucks.entity.setLocalPosition(0, authoredSocket ? 0.15 : -0.10, 0);
     socket.addChild(chucks.entity);
     weapon = chucks;
     freeChuck = chucks.free;
@@ -501,7 +508,7 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
   const outfit = mats.get('outfit');
   return {
     root, scale, height: 1.81 * scale, weapon, weaponEntity: weapon.entity, animator, freeChuck,
-    flashMats: outfit ? [outfit] : [],
+    flashMats: outfit ? [outfit] : [...mats.entries()].filter(([name]) => name.startsWith('shrine_')).map(([, m]) => m),
     chest: () => chestPos.copy(chestNode.getPosition()),
     destroy: () => root.destroy(),
   };

@@ -1,5 +1,6 @@
 import { AppBase, Asset, AssetListLoader, ContainerResource, Texture } from 'playcanvas';
 import { settings } from '@/core/settings';
+import { characterAssetUrl } from '@/characters/catalog';
 
 /** PBR texture sets packed by tools/pack-assets.mjs: assets/textures/<id>/{diff,nor_gl,arm}.webp */
 export const TEXTURE_SETS = [
@@ -63,7 +64,7 @@ export class AssetBank {
       list.push(a);
     }
     for (const id of CHARACTERS) {
-      const a = new Asset(`char/${id}`, 'container', { url: `assets/characters/${id}.glb` });
+      const a = new Asset(`char/${id}`, 'container', { url: characterAssetUrl(id, new URLSearchParams(location.search)) });
       this.models.set(`char/${id}`, a);
       list.push(a);
     }
