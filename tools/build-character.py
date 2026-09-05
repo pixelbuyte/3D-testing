@@ -529,6 +529,8 @@ def build(src, out_path, cfg):
         ('heavy', 'Sword_Heavy_Combo', 0.0, 0.95, 1.0, False),
         ('dodge', 'Slide_Start', 0.0, 0.62, 0.55, False),
         ('death', 'Hit_Knockback', 0.0, None, 0.35, False),
+        # the sharp recoil at the start of the knockback, before the fall: a sword fighter's flinch
+        ('hit2', 'Hit_Knockback', 0.0, 0.30, 0.12, False),
         ('block', 'Sword_Block', 0.0, None, 0.0, False),
         ('tpose', 'A_TPose', 0.0, 0.04, 0.0, False),
     ]

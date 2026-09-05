@@ -1,4 +1,6 @@
-import { Vec3 } from 'playcanvas';
+import { Quat, Vec3 } from 'playcanvas';
+
+const RAD2DEG = 180 / Math.PI;
 
 /**
  * Melee hit detection: the blade is swept between where it was last frame and where it is now, and
@@ -69,19 +71,45 @@ export function segmentDistance(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3, c1 = _c1
   return c1.distance(c2);
 }
 
+const _pd = new Vec3(), _d = new Vec3(), _axis = new Vec3(), _q = new Quat(), _dir = new Vec3();
+
 /**
  * Sweep a blade through the frame and report the first sub-step at which it comes within
- * `radius + tolerance` of the capsule's axis. `maxStep` bounds how far the tip may travel between
- * sub-steps, so a 20 m/s swing on a 100 ms frame is still tested every 12 cm.
+ * `radius + tolerance` of the capsule's axis.
+ *
+ * Between two frames the base moves a little and the blade *rotates* a lot; interpolating the tip
+ * in a straight line cuts inside that arc exactly where the swing reaches furthest, and the error
+ * grows with the frame time. So the sweep interpolates the base linearly and the blade direction
+ * by rotation, which rebuilds the arc, and it sub-steps by the tip's arc length so no sub-step
+ * moves the tip further than `maxStep`.
  */
 export function sweepBlade(sweep: BladeSweep, cap: Capsule, tolerance: number, maxStep: number, out: SweepHit): boolean {
-  const travel = Math.max(sweep.tip.distance(sweep.prevTip), sweep.base.distance(sweep.prevBase));
-  const steps = Math.max(1, Math.min(12, Math.ceil(travel / Math.max(0.01, maxStep))));
+  _pd.sub2(sweep.prevTip, sweep.prevBase);
+  _d.sub2(sweep.tip, sweep.base);
+  const len0 = _pd.length(), len1 = _d.length();
+  if (len0 < 1e-5 || len1 < 1e-5) return false;
+  _pd.mulScalar(1 / len0);
+  _d.mulScalar(1 / len1);
+  const cosA = Math.max(-1, Math.min(1, _pd.dot(_d)));
+  const angle = Math.acos(cosA);
+  // rotation axis from the previous direction to the current one; a straight thrust has none
+  _axis.cross(_pd, _d);
+  const rotating = _axis.length() > 1e-6 && angle > 1e-4;
+  if (rotating) _axis.normalize();
+  const travel = sweep.base.distance(sweep.prevBase) + angle * Math.max(len0, len1);
+  const steps = Math.max(1, Math.min(48, Math.ceil(travel / Math.max(0.01, maxStep))));
   const reach = cap.radius + tolerance;
+  let best = Infinity;
   for (let k = 0; k <= steps; k++) {
     const f = k / steps;
     _sb.lerp(sweep.prevBase, sweep.base, f);
-    _st.lerp(sweep.prevTip, sweep.tip, f);
+    if (rotating) {
+      _q.setFromAxisAngle(_axis, angle * f * RAD2DEG);
+      _q.transformVector(_pd, _dir);
+    } else {
+      _dir.lerp(_pd, _d, f).normalize();
+    }
+    _st.copy(_sb).addScaled(_dir, len0 + (len1 - len0) * f);
     const d = segmentDistance(_sb, _st, cap.a, cap.b);
     if (d <= reach) {
       out.point.copy(_c1);
@@ -89,7 +117,10 @@ export function sweepBlade(sweep: BladeSweep, cap: Capsule, tolerance: number, m
       out.distance = d;
       return true;
     }
+    if (d < best) best = d;
   }
+  // no contact: report how close it came, which the trace and the tuning read
+  out.distance = best;
   return false;
 }
 

@@ -231,6 +231,13 @@ export class SkinnedAnimator implements FighterAnimator {
   /** the skinned hands come from the animation itself; nothing to solve */
   get offHandOnWeapon(): boolean { return false; }
 
+  get sweeping(): boolean {
+    const ac = this.action;
+    if (!ac || !ac.def.events) return false;
+    for (const ev of ac.def.events) if (ev.name === 'hitClose' && ev.t > ac.firedTo) return true;
+    return false;
+  }
+
   consumeLunge(_dt: number): number {
     const v = this.pendingLunge;
     this.pendingLunge = 0;
@@ -402,11 +409,15 @@ export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResou
   model.addChild(char.entity);
 
   // materials: keep the atlas's own detail, add the fresnel rim the environment lighting needs
+  // materials: instances share the container's materials, and the hit flash writes emissive, so
+  // every body gets its own copies (cloned once per name, shared across that body's meshes)
   const mats = new Map<string, StandardMaterial>();
   for (const r of char.entity.findComponents('render') as RenderComponent[]) {
     for (const mi of r.meshInstances) {
-      const m = mi.material as StandardMaterial;
-      if (!mats.has(m.name)) mats.set(m.name, m);
+      const src = mi.material as StandardMaterial;
+      let m = mats.get(src.name);
+      if (!m) { m = src.clone(); m.name = src.name; mats.set(src.name, m); }
+      mi.material = m;
     }
   }
   const rim: [number, number, number] = variant === 'enemy' ? [0.95, 0.55, 0.30] : variant === 'ally' ? [0.72, 0.76, 0.92] : [0.55, 0.72, 0.95];

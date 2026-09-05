@@ -24,6 +24,7 @@ export class Game {
   director: Director;
   npcs: NpcDirector;
   combat: CombatDirector;
+  private debugPanel = false;
   menu: SettingsMenu;
   hero: HeroProp;
   freeCam = false;
@@ -77,7 +78,11 @@ export class Game {
       attack: (k: string) => this.combat.debugAttack(k as never),
       simulate: (sec: number, step?: number) => this.combat.simulate(sec, this.input, step),
       hitboxes: (on: boolean) => this.combat.setHitboxes(on),
+      trace: (on: boolean) => { if (on) this.combat.trace = []; const t = this.combat.trace; if (!on) this.combat.trace = null; return t ?? []; },
+      previewOff: () => this.combat.previewOff(),
       enemyHealth: () => this.combat.debugEnemyHealth(),
+      arena: (hold?: boolean, dist?: number) => this.combat.forceDuel(hold, dist),
+      setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       world: this.world,
     });
@@ -133,6 +138,7 @@ export class Game {
 
     if (!this.freeCam) {
       this.player.update(dt);
+      if (this.input.wasPressed('F1')) { this.debugPanel = !this.debugPanel; if (!this.debugPanel) this.hud.setDebugStats(null); }
       if (this.input.wasPressed('F2')) this.hud.showToast(this.combat.toggleHitboxes() ? 'HITBOXES ON' : 'HITBOXES OFF', 1.5);
       if (this.input.wasPressed('KeyE') && !this.menu.isOpen) {
         // stones first, then whoever is standing next to you
@@ -149,6 +155,16 @@ export class Game {
     this.npcs.setAwakeness(this.director.activated / 3);
     this.combat.update(dt, this.input, this.freeCam);
     this.hud.setVitals(this.combat.inCombat, this.combat.health01);
+    if (this.debugPanel) {
+      const st = this.stats() as Record<string, unknown>;
+      this.hud.setDebugStats([
+        `fps ${st.fps}  dt ${st.dt}  draw ${st.drawCalls}  tris ${st.triangles}`,
+        `player hp ${st.health}  act ${st.act}  lock ${st.lock}  hitbox ${st.hitOpen ? 'ACTIVE' : '-'}  iframes ${st.iframes}`,
+        `enemies ${st.enemies}  nearest ${st.nearest}  combo ${st.combo}`,
+        `foes ${st.foes}`,
+        `F1 panel  F2 hitboxes`,
+      ].join('\n'));
+    }
     this.applyShake(dt);
 
     this.world.update(dt, this.world.camera.getPosition());

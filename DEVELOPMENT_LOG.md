@@ -43,3 +43,40 @@ crashed for exactly that reason before the switch.
 
 **Next.** Read the simulation results; rewrite the enemy loop as the specified state machine with
 cooldowns and ranges from config; add the 1v1 arena hook.
+
+## 10:50 UTC — checkpoint 2
+
+**Built.** Enemy loop rewritten as the specified state machine (idle → alert → approach →
+combatIdle → attack → recover → combatIdle; hit / stagger / dying), with ranges, cooldowns and the
+alert radius from `COMBAT.enemy`; ring slots with hysteresis so waiting enemies hold position
+instead of jittering. 1v1 arena hook (`__ECHOES.arena(hold, dist)`) that benches the ally, disarms
+the staged encounters and spawns one orange enemy in front of the player; per-frame sweep trace
+(`__ECHOES.trace`) for the lab scripts; F1 stats panel and F2 hitbox overlay wired to keys.
+
+**Hit detection is now frame-rate independent.** The blade path is no longer rebuilt from two
+poses a frame apart: while an attack's damage window is pending or open, the animation advances in
+sub-steps no longer than 1/60 s (`COMBAT.blade.sampleStep`) and the blade is recorded after each,
+in the root's own space; on placement the samples are laid along the root's motion for the frame
+and swept in order (`Actor.pose/finish`, `Actor.bladeSweeps`, `Director.sweepAttack`). Each sweep
+segment is still arc-aware and sub-divided by travel distance.
+
+**Tested.** Hit lab (held enemy at 1.6 m and 2.3 m; light×3, heavy, three more lights; then the
+same with the back turned) at 1/60, 1/30, 1/20 and 1/10 s steps: every case lands exactly
+12/14/18 then the killing heavy, nothing lands with the back turned, no NaN. Before this block
+1/20 lost the second hit and 1/10 landed nothing. AI duel (enemy fights back, scripted swings and
+dodges) at 1/60 and 1/20: enemy dies (≈5 s / ≈13 s), no stuck state, no attacks after death, no
+NaN; enemy blade lands 12 or 14 on the player as configured.
+
+**Bugs found / fixed.** Root motion consumed one frame before the pose that produced it (split
+`pose()`/`finish()`); `hitOpen` stuck after an interrupted attack; `hitClose` firing before the
+frame's sweep (tail flag); hits testing enemies by array index in the FPS test after a reap (stable
+ids); arena spawning inside an encounter trigger (encounters disarmed); a hit turning the held
+dummy into an active enemy; sweep chord cutting inside the swing arc; and the coarse-step misses
+above.
+
+**FPS.** SwiftShader only this block (logic stepped); a real measurement waits for the production
+build profile in hour 5.
+
+**Next.** Switch hit/stagger clips to the sword-fighter flinch track; verify the 1v1 visually from
+the gameplay camera with the F2 overlay (idle→attack, run→attack, combo, heavy, dodge, walls, kill
+mid-animation); feel pass on hit-stop, spark, sound and camera impulse.

@@ -12,9 +12,16 @@ export interface DebugHooks {
   attack?: (kind: string) => boolean;
   /** tooling: advance the fight without rendering, optionally at a chosen step size */
   simulate?: (seconds: number, step?: number) => void;
-  enemyHealth?: () => number[];
+  enemyHealth?: () => { id: number; hp: number; state: string }[];
+  /** tooling: a 1v1 on flat stone; hold=true freezes the enemy for hit-detection tests */
+  arena?: (hold?: boolean, dist?: number) => void;
+  /** tooling: turn the player to an absolute yaw in degrees */
+  setYaw?: (deg: number) => void;
   /** tooling: the F2 hitbox overlay */
   hitboxes?: (on: boolean) => void;
+  /** tooling: start (true) or stop-and-return (false) per-frame sweep records */
+  trace?: (on: boolean) => Record<string, unknown>[];
+  previewOff?: () => void;
   freeCam: (on: boolean) => void;
   world?: unknown;
 }

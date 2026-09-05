@@ -35,16 +35,24 @@ export const COMBAT = {
     damage: { nunCombo: 8, nunFlourish: 14 } as Record<string, number>,
   },
   blade: {
-    /** the sweep between two frames is split so that no sub-step moves the tip further than this */
+    /**
+     * While an attack's damage window is pending or open, the animation is advanced in steps no
+     * longer than this and the blade is sampled after each one, so the swept path follows the clip
+     * at 60 Hz whatever the frame rate — two poses a tenth of a second apart do not describe a swing.
+     */
+    sampleStep: 1 / 60,
+    /** at most this many animation samples per frame (dt is clamped by the engine anyway) */
+    maxSamples: 12,
+    /** the sweep between two samples is split so that no sub-step moves the tip further than this */
     maxSubStep: 0.12,
     /** hit tolerance added to the target's capsule radius: half the blade's thickness plus a little */
-    thickness: 0.06,
+    thickness: 0.08,
     /** cosine of the widest angle off the attacker's facing a target may sit and still be hit */
     minFacingDot: -0.2,
   },
   hurtbox: {
     /** body capsule: radius and the segment from the ground up */
-    radius: 0.34,
+    radius: 0.38,
     bottom: 0.15,
     top: 1.65,
   },

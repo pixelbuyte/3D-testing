@@ -55,6 +55,8 @@ export interface FighterAnimator {
   readonly busy: boolean;
   readonly grounded: boolean;
   readonly offHandOnWeapon: boolean;
+  /** an attack is playing and its damage window has not closed yet: the blade wants fine sampling */
+  readonly sweeping: boolean;
   consumeLunge(dt: number): number;
   update(dt: number): void;
 }
