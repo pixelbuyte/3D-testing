@@ -75,7 +75,8 @@ export class Game {
       encounter: (n: number) => this.combat.forceEncounter(n),
       preview: (x: number, z: number, yaw: number, which?: string) => this.combat.preview(x, z, yaw, which as never),
       attack: (k: string) => this.combat.debugAttack(k as never),
-      simulate: (sec: number) => this.combat.simulate(sec, this.input),
+      simulate: (sec: number, step?: number) => this.combat.simulate(sec, this.input, step),
+      hitboxes: (on: boolean) => this.combat.setHitboxes(on),
       enemyHealth: () => this.combat.debugEnemyHealth(),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       world: this.world,
@@ -132,6 +133,7 @@ export class Game {
 
     if (!this.freeCam) {
       this.player.update(dt);
+      if (this.input.wasPressed('F2')) this.hud.showToast(this.combat.toggleHitboxes() ? 'HITBOXES ON' : 'HITBOXES OFF', 1.5);
       if (this.input.wasPressed('KeyE') && !this.menu.isOpen) {
         // stones first, then whoever is standing next to you
         if (!this.director.interact() && !this.npcs.interact()) this.audio.playInteract('denied');

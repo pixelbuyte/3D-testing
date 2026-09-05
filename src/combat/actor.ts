@@ -3,10 +3,9 @@ import type { EngineContext } from '@/core/engine';
 import type { Fighter } from './characters';
 import type { Clip, FighterAnimator } from './anim';
 import { WeaponTrail } from './weapons';
-import { solveTwoBone } from './ik';
-import { FOREARM, HIPS_Y, SOLE, UPPER_ARM } from './rig';
-import { Quat } from 'playcanvas';
 import { clamp01, damp, dampAngle, DEG } from '@/utils/math';
+import { COMBAT } from './config';
+import type { BladeSweep, Capsule } from './hitdetect';
 
 /**
  * A fighter in the world: skeleton + animator + weapon trail + the bit of physics it needs.
@@ -58,12 +57,16 @@ export class Actor {
   /** 0 = solid, 1 = fully dissolved */
   dissolve = 0;
   private baseAccent: Color;
-  /** vertical offset applied to the hips so the lowest sole meets the ground */
-  private groundOff = 0;
-  private gripT = new Vec3();
-  private gripPole = new Vec3();
-  private gripQ = new Quat();
-  private gripInv = new Quat();
+  /** seconds of invulnerability left (the dodge's opening) */
+  invulnerable = 0;
+  /** where the cutting edge was last frame and is now — the swept volume hit detection tests */
+  private readonly curBase = new Vec3();
+  private readonly curTip = new Vec3();
+  private readonly sweepObj: BladeSweep;
+  private sweepValid = false;
+  private readonly capA = new Vec3();
+  private readonly capB = new Vec3();
+  private readonly cap: Capsule;
 
   constructor(ctx: EngineContext, o: ActorOpts) {
     this.fighter = o.fighter;
@@ -78,7 +81,20 @@ export class Actor {
     this.anim = o.fighter.animator;
     this.trail = new WeaponTrail(ctx, o.trailColor, o.trailLife ?? 0.16);
     this.baseAccent = o.fighter.flashMats[0]?.emissive.clone() ?? new Color(0, 0, 0);
+    this.sweepObj = { prevBase: new Vec3(), prevTip: new Vec3(), base: this.curBase, tip: this.curTip };
+    this.cap = { a: this.capA, b: this.capB, radius: COMBAT.hurtbox.radius * o.fighter.scale };
     ctx.app.root.addChild(o.fighter.root);
+  }
+
+  /** The blade's travel over the last frame. Valid after updateVisual(). */
+  bladeSweep(): BladeSweep { return this.sweepObj; }
+
+  /** The body's hurt capsule, feet to head, in world space. */
+  capsule(): Capsule {
+    const s = this.fighter.scale;
+    this.capA.set(this.pos.x, this.pos.y + COMBAT.hurtbox.bottom * s, this.pos.z);
+    this.capB.set(this.pos.x, this.pos.y + COMBAT.hurtbox.top * s, this.pos.z);
+    return this.cap;
   }
 
   get root() { return this.fighter.root; }
@@ -93,6 +109,7 @@ export class Actor {
     this.yaw = this.targetYaw = yawDeg * DEG;
     this.root.setPosition(this.pos);
     this.root.setEulerAngles(0, yawDeg, 0);
+    this.sweepValid = false;   // do not sweep the blade in from wherever the body was before
   }
 
   /** Lock out input/AI for `t` seconds — used for the duration of an attack or a stagger. */
@@ -109,10 +126,11 @@ export class Actor {
    * (a little under the whole clip, so combos link). The fraction is of the body's own clip
    * length: a skinned body's slash and the procedural one's are not the same duration.
    */
-  act(clip: Clip, lockFrac = 0.86, fade = 0.09): void {
+  act(clip: Clip, lockFrac = 0.86, fade = 0.09): number {
     const dur = this.anim.play(clip, fade);
     this.lock(dur * lockFrac);
     this.hitThisSwing.clear();
+    return dur;
   }
 
   setTrail(v: number): void { this.trailWant = v; }
@@ -138,7 +156,7 @@ export class Actor {
   hitFlash(): void { this.flash = 1; }
 
   damage(n: number): boolean {
-    if (this.dead) return false;
+    if (this.dead || !Number.isFinite(n) || n <= 0) return false;
     this.health -= n;
     this.hitFlash();
     if (this.health <= 0) { this.health = 0; this.dead = true; return true; }
@@ -183,12 +201,17 @@ export class Actor {
     this.root.setPosition(this.pos);
     this.root.setEulerAngles(0, this.yaw / DEG, 0);
 
+    this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.anim.update(dt);
-    this.groundFeet(dt);
-    this.solveOffHand();
+
+    // --- the blade's travel this frame, for the sweep; a fresh spawn starts with no travel
+    const seg = this.weaponSegment();
+    if (this.sweepValid) { this.sweepObj.prevBase.copy(this.curBase); this.sweepObj.prevTip.copy(this.curTip); }
+    else { this.sweepObj.prevBase.copy(seg.base); this.sweepObj.prevTip.copy(seg.tip); this.sweepValid = true; }
+    this.curBase.copy(seg.base);
+    this.curTip.copy(seg.tip);
 
     // --- weapon trail
-    const seg = this.weaponSegment();
     this.trail.setStrength(this.trailWant);
     this.trail.update(dt, seg.base, seg.tip);
     this.trailWant = Math.max(0, this.trailWant - dt * 5);
@@ -205,47 +228,6 @@ export class Actor {
         m.update();
       }
     }
-  }
-
-  /**
-   * Pelvis drop: after the pose is applied, measure the lowest sole and shift the whole body so it
-   * meets the ground. An FK leg chain that crouches, lunges or strides pulls its feet up off the
-   * floor; this puts them back without an IK solve, and it is what makes a stance look planted.
-   */
-  private groundFeet(dt: number): void {
-    const rig = this.fighter.rig;
-    if (!rig) return;   // a skinned body's feet come planted from its clips
-    const s = rig.scale;
-    let target = this.groundOff;
-    if (this.anim.grounded) {
-      const lowest = Math.min(rig.joints.footL.getPosition().y, rig.joints.footR.getPosition().y) - SOLE * s;
-      // the joints already include the current offset, so the correction is relative to it
-      target = this.groundOff + (this.root.getPosition().y - lowest);
-      target = Math.max(-0.42 * s, Math.min(0.20 * s, target));
-    } else {
-      target = 0;
-    }
-    this.groundOff = damp(this.groundOff, target, this.anim.grounded ? 30 : 6, dt);
-    rig.joints.hips.setLocalPosition(0, HIPS_Y * s + this.groundOff, 0);
-  }
-
-  /** Close the left hand on the hilt when the weapon is two-handed. */
-  private solveOffHand(): void {
-    const grip = this.fighter.weapon.offHandGrip;
-    const rig = this.fighter.rig;
-    if (!grip || !rig || !this.anim.offHandOnWeapon) return;
-    const s = rig.scale;
-    const wt = this.fighter.weaponEntity.getWorldTransform();
-    wt.transformPoint(grip, this.gripT);
-    // elbow points down and out to the character's left
-    const yaw = this.yaw;
-    this.gripPole.set(-Math.cos(yaw) * 0.55, -0.8, Math.sin(yaw) * 0.55);
-    solveTwoBone(rig.joints.upperArmL, rig.joints.forearmL, this.gripT, this.gripPole, UPPER_ARM * s, FOREARM * s);
-    // the off-hand wraps the grip the same way the weapon hand does: weapon rotation composed
-    // with the inverse of the weapon's own offset inside the right hand
-    this.gripInv.copy(this.fighter.weaponEntity.getLocalRotation()).invert();
-    this.gripQ.mul2(this.fighter.weaponEntity.getRotation(), this.gripInv);
-    rig.joints.handL.setRotation(this.gripQ);
   }
 
   /** Sink and shrink on defeat — cheap stand-in for a dissolve shader, and it reads. */

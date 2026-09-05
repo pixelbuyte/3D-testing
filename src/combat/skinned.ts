@@ -6,7 +6,7 @@ import type { EngineContext } from '@/core/engine';
 import type { Clip, FighterAnimator } from './anim';
 import type { Fighter } from './characters';
 import { applyRim } from './materials';
-import { buildKatana } from './weapons';
+import { buildKatana, buildNunchucks, type WeaponBuild } from './weapons';
 import { clamp01 } from '@/utils/math';
 
 /**
@@ -58,6 +58,44 @@ const PLAYER_CLIPS: Record<string, SkinnedClipDef> = {
   slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
+
+const SWING = (t0: number, t1: number, t2: number) => [{ t: t0, name: 'swing' }, { t: t1, name: 'hitOpen' }, { t: t2, name: 'hitClose' }];
+
+/** the orange swordsman: the director's enemy clip names onto the same tracks */
+const ENEMY_CLIPS: Record<string, SkinnedClipDef> = {
+  idle: { track: 'idle', loop: true },
+  guard: { track: 'guard', loop: true },
+  enemyIdle: { track: 'guard', loop: true },
+  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
+  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  enemyRun: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  enemyAttack: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: SWING(0.28, 0.36, 0.80) },
+  enemyAttack2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
+  enemyHeavy: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
+  hit: { track: 'hit' },
+  stagger: { track: 'hit' },
+  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
+  slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
+  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
+};
+
+/** the nunchuck ally: fast strikes on the short sword clips, the spin on the heavy */
+const ALLY_CLIPS: Record<string, SkinnedClipDef> = {
+  idle: { track: 'idle', loop: true },
+  guard: { track: 'guard', loop: true },
+  nunIdle: { track: 'guard', loop: true },
+  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
+  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
+  nunCombo: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
+  nunFlourish: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
+  dodge: { track: 'dodge', rootMotion: 1 },
+  hit: { track: 'hit' },
+  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
+  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
+};
+
+export type Variant = 'player' | 'enemy' | 'ally';
+const CLIP_TABLES: Record<Variant, Record<string, SkinnedClipDef>> = { player: PLAYER_CLIPS, enemy: ENEMY_CLIPS, ally: ALLY_CLIPS };
 
 // ------------------------------------------------------------------ loading
 
@@ -349,12 +387,17 @@ export interface SocketTransform { pos: [number, number, number]; quat: [number,
  */
 export const KATANA_SOCKET: SocketTransform = { pos: [-0.031, 0.111, -0.005], quat: [0.19326, 0.09009, 0.28395, 0.93483], grip: 0.09 };
 
-export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResource): Fighter {
+export interface FighterOpts { scale?: number }
+
+/** One body builder for every fighter: same GLB pipeline, same socket, a different palette, weapon and clip table. */
+export function makeSkinnedFighter(ctx: EngineContext, container: ContainerResource, variant: Variant, opts: FighterOpts = {}): Fighter {
   const char = instantiateCharacter(container);
-  const root = new Entity('player-body');
+  const scale = opts.scale ?? 1;
+  const root = new Entity(`${variant}-body`);
   // the GLB faces +Z; the game's forward is -Z
   const model = new Entity('model');
   model.setLocalEulerAngles(0, 180, 0);
+  model.setLocalScale(scale, scale, scale);
   root.addChild(model);
   model.addChild(char.entity);
 
@@ -366,39 +409,59 @@ export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResour
       if (!mats.has(m.name)) mats.set(m.name, m);
     }
   }
+  const rim: [number, number, number] = variant === 'enemy' ? [0.95, 0.55, 0.30] : variant === 'ally' ? [0.72, 0.76, 0.92] : [0.55, 0.72, 0.95];
   for (const [name, m] of mats) {
-    if (name === 'outfit') applyRim(m, [0.55, 0.72, 0.95], 0.34, 3.0);
+    if (name === 'outfit') applyRim(m, rim, 0.34, 3.0);
     else if (name.startsWith('skin')) applyRim(m, [0.9, 0.62, 0.5], 0.2, 3.5);
-    else if (name === 'hair' || name === 'brows') applyRim(m, [0.55, 0.68, 0.9], 0.4, 2.6);
+    else if (name === 'hair' || name === 'brows') applyRim(m, rim, 0.4, 2.6);
     m.update();
   }
 
-  // the weapon: a socket under the hand bone, then the katana with a local offset inside it
+  // the weapon: a socket under the hand bone, then the weapon with a local offset inside it
   const hand = char.entity.findByName('hand_r') as Entity;
   const socket = new Entity('WeaponSocket');
   socket.setLocalPosition(KATANA_SOCKET.pos[0], KATANA_SOCKET.pos[1], KATANA_SOCKET.pos[2]);
   socket.setLocalRotation(new Quat(KATANA_SOCKET.quat[0], KATANA_SOCKET.quat[1], KATANA_SOCKET.quat[2], KATANA_SOCKET.quat[3]));
   hand.addChild(socket);
-  const katana = buildKatana(ctx,
-    characterMaterialFor(ctx, 'steel', new Color(0.84, 0.87, 0.92), 'blade'),
-    characterMaterialFor(ctx, 'wrap', new Color(0.10, 0.14, 0.20), 'leather'),
-    characterMaterialFor(ctx, 'fitting', new Color(0.20, 0.70, 0.80), 'metal'));
-  katana.entity.setLocalPosition(0, -KATANA_SOCKET.grip, 0);
-  socket.addChild(katana.entity);
+  let weapon: WeaponBuild;
+  let freeChuck: Entity | undefined;
+  if (variant === 'ally') {
+    const chucks = buildNunchucks(ctx,
+      characterMaterialFor(ctx, variant, 'wood', new Color(0.12, 0.10, 0.10), 'leather'),
+      characterMaterialFor(ctx, variant, 'metal', new Color(0.62, 0.64, 0.70), 'metal'),
+      characterMaterialFor(ctx, variant, 'cap', new Color(0.75, 0.85, 1.0), 'metal'));
+    chucks.entity.setLocalPosition(0, -0.10, 0);
+    socket.addChild(chucks.entity);
+    weapon = chucks;
+    freeChuck = chucks.free;
+  } else {
+    const enemy = variant === 'enemy';
+    const katana = buildKatana(ctx,
+      characterMaterialFor(ctx, variant, 'steel', enemy ? new Color(0.62, 0.62, 0.66) : new Color(0.84, 0.87, 0.92), 'blade'),
+      characterMaterialFor(ctx, variant, 'wrap', enemy ? new Color(0.08, 0.07, 0.07) : new Color(0.10, 0.14, 0.20), 'leather'),
+      characterMaterialFor(ctx, variant, 'fitting', enemy ? new Color(0.90, 0.45, 0.12) : new Color(0.20, 0.70, 0.80), 'metal'));
+    katana.entity.setLocalPosition(0, -KATANA_SOCKET.grip, 0);
+    socket.addChild(katana.entity);
+    weapon = katana;
+  }
 
-  const animator = new SkinnedAnimator(char);
+  const animator = new SkinnedAnimator(char, CLIP_TABLES[variant]);
   const chestNode = char.entity.findByName('spine_02') as Entity;
   const chestPos = new Vec3();
   const outfit = mats.get('outfit');
   return {
-    root, scale: 1, height: 1.81, weapon: katana, weaponEntity: katana.entity, animator,
+    root, scale, height: 1.81 * scale, weapon, weaponEntity: weapon.entity, animator, freeChuck,
     flashMats: outfit ? [outfit] : [],
     chest: () => chestPos.copy(chestNode.getPosition()),
     destroy: () => root.destroy(),
   };
 }
 
+export function makeSkinnedPlayer(ctx: EngineContext, container: ContainerResource): Fighter {
+  return makeSkinnedFighter(ctx, container, 'player');
+}
+
 import { characterMaterial } from './materials';
-function characterMaterialFor(ctx: EngineContext, name: string, c: Color, kind: 'blade' | 'leather' | 'metal'): StandardMaterial {
-  return characterMaterial(ctx, `player-${name}`, c, { kind });
+function characterMaterialFor(ctx: EngineContext, variant: Variant, name: string, c: Color, kind: 'blade' | 'leather' | 'metal'): StandardMaterial {
+  return characterMaterial(ctx, `${variant}-${name}`, c, { kind });
 }

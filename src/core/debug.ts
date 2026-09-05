@@ -10,9 +10,11 @@ export interface DebugHooks {
   preview?: (x: number, z: number, yaw: number, which?: string) => void;
   /** tooling: fire an attack without pointer lock */
   attack?: (kind: string) => boolean;
-  /** tooling: advance the fight without rendering */
-  simulate?: (seconds: number) => void;
+  /** tooling: advance the fight without rendering, optionally at a chosen step size */
+  simulate?: (seconds: number, step?: number) => void;
   enemyHealth?: () => number[];
+  /** tooling: the F2 hitbox overlay */
+  hitboxes?: (on: boolean) => void;
   freeCam: (on: boolean) => void;
   world?: unknown;
 }

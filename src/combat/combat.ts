@@ -1,4 +1,4 @@
-import { Color, Vec3 } from 'playcanvas';
+import { Color, Vec3, type ContainerResource } from 'playcanvas';
 import type { EngineContext } from '@/core/engine';
 import type { World } from '@/world/world';
 import type { AudioEngine } from '@/audio/audio';
@@ -6,11 +6,14 @@ import type { HUD } from '@/ui/hud';
 import type { PlayerController } from '@/player/controller';
 import type { Input } from '@/player/input';
 import { Actor } from './actor';
-import { makeAlly, makeEnemy, makeWarrior, type EnemyKind } from './characters';
-import { makeSkinnedPlayer } from './skinned';
+import type { EnemyKind, Fighter } from './characters';
+import { makeSkinnedFighter, makeSkinnedPlayer } from './skinned';
 import type { AssetBank } from '@/assets/manifest';
 import * as C from './clips';
 import { CombatFX } from './fx';
+import { COMBAT } from './config';
+import { CombatDebugDraw } from './debugdraw';
+import { facingDot, sweepBlade, type SweepHit } from './hitdetect';
 import { clamp01, damp, DEG, rng, smoothstep } from '@/utils/math';
 
 /**
@@ -32,6 +35,8 @@ interface Enemy {
   actor: Actor;
   state: EnemyState;
   timer: number;
+  /** length of the attack clip the body is playing, so the wind-up knows when to stop tracking */
+  attackDur: number;
   kind: EnemyKind;
   /** slot around the player, so they surround instead of stacking */
   slot: number;
@@ -51,7 +56,11 @@ interface Encounter {
   cleared: boolean;
 }
 
-const PLAYER_REACH = 2.5;
+function requireModel(assets: AssetBank | undefined, id: string): ContainerResource {
+  if (!assets?.hasModel(id)) throw new Error(`character model not loaded: ${id}`);
+  return assets.model(id);
+}
+
 const ENEMY_REACH = 2.15;
 
 export class CombatDirector {
@@ -77,8 +86,13 @@ export class CombatDirector {
   private attackToken: Enemy | null = null;
   private tokenTimer = 0;
   private taughtControls = false;
-  private playerHealth = 100;
+  private playerHealth: number = COMBAT.player.maxHealth;
   private playerHurtCd = 0;
+  private debugDraw: CombatDebugDraw;
+  private hitOut: SweepHit = { point: new Vec3(), t: 0, distance: 0 };
+  private rayDir = new Vec3();
+  private enemyActorList: Actor[] = [];
+  private playerTargets: Actor[] = [];
   private banner = '';
   private bannerT = 0;
   private tmp = new Vec3();
@@ -92,19 +106,21 @@ export class CombatDirector {
     private audio: AudioEngine,
     private hud: HUD,
     private controller: PlayerController,
-    assets?: AssetBank,
+    private assets?: AssetBank,
   ) {
     const g = (x: number, z: number): number => world.field.heightAt(x, z);
+    this.debugDraw = new CombatDebugDraw(ctx.app);
     this.fx = new CombatFX(ctx);
 
     this.player = new Actor(ctx, {
-      fighter: assets?.hasModel('char/player') ? makeSkinnedPlayer(ctx, assets.model('char/player')) : makeWarrior(ctx), team: 'player', ground: g,
+      fighter: makeSkinnedPlayer(ctx, requireModel(assets, 'char/player')), team: 'player', ground: g,
       trailColor: new Color(0.62, 0.90, 1.0), trailLife: 0.15, maxHealth: 100, runSpeed: 6.0,
     });
     this.player.root.enabled = false;
+    this.playerTargets = [this.player];
 
     this.ally = new Actor(ctx, {
-      fighter: makeAlly(ctx), team: 'ally', ground: g,
+      fighter: makeSkinnedFighter(ctx, requireModel(assets, 'char/ally'), 'ally'), team: 'ally', ground: g,
       trailColor: new Color(1.0, 0.62, 0.28), trailLife: 0.22, maxHealth: 999, runSpeed: 5.6,
     });
     this.ally.root.enabled = false;
@@ -190,6 +206,13 @@ export class CombatDirector {
     this.updateAlly(dt);
     this.separate();
 
+    if (this.debugDraw.enabled) {
+      this.debugDraw.capsule(this.player.capsule(), this.playerHurtCd > 0);
+      if (this.ally.root.enabled) this.debugDraw.capsule(this.ally.capsule());
+      for (const e of this.enemies) if (!e.actor.dead) this.debugDraw.capsule(e.actor.capsule());
+    }
+    this.debugDraw.update(dt);
+
     this.shake = damp(this.shake, 0, 7, dt);
     this.shakeAmount = this.shake;
     this.fx.update(dt);
@@ -220,16 +243,16 @@ export class CombatDirector {
         const sp = e.spawns[i];
         const x = e.x + sp.dx, z = e.z + sp.dz;
         const a = new Actor(this.ctx, {
-          fighter: makeEnemy(this.ctx, sp.kind, this.rand()),
+          fighter: this.enemyFighter(sp.kind),
           team: 'enemy',
           ground: (gx, gz) => this.world.field.heightAt(gx, gz),
           trailColor: sp.kind === 'elite' ? new Color(1.0, 0.35, 0.4) : new Color(0.75, 0.4, 1.0),
           trailLife: 0.13,
-          maxHealth: sp.kind === 'elite' ? 260 : sp.kind === 'blade' ? 130 : 90,
+          maxHealth: COMBAT.enemy.maxHealth[sp.kind] ?? 65,
           runSpeed: sp.kind === 'elite' ? 3.6 : 4.4,
         });
         a.spawn(x, z, 180);
-        const en: Enemy = { actor: a, state: 'idle', timer: 0.35 + i * 0.22, kind: sp.kind, slot: i, dieT: 0, encounter: e.id };
+        const en: Enemy = { actor: a, state: 'idle', timer: 0.35 + i * 0.22, attackDur: 0.5, kind: sp.kind, slot: i, dieT: 0, encounter: e.id };
         a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
         this.enemies.push(en);
         this.fx.spawnPuff(a.pos, sp.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.6, 0.3, 0.9));
@@ -297,6 +320,7 @@ export class CombatDirector {
         this.softTarget();
       } else if ((input.wasPressed('Space') || input.wasPressed('KeyQ')) && this.dodgeCd <= 0 && inFight) {
         p.act(C.DODGE, 0.8);
+        p.invulnerable = COMBAT.player.dodgeInvulnerable;
         this.dodgeCd = 0.75;
         this.lungeScale = 1;
         this.fx.dust(p.pos, 10);
@@ -318,7 +342,7 @@ export class CombatDirector {
 
     // the hit sweep reads the blade only after the pose has been applied, so the damage window
     // matches the frame the blade is actually through the target
-    this.tickTrailAndHits(p, dt, p.weaponSegment(), 'enemy', PLAYER_REACH);
+    this.sweepAttack(p, this.enemyActors(), (t, at) => this.landHit(p, this.enemyOf(t), at));
   }
 
   /**
@@ -394,17 +418,17 @@ export class CombatDirector {
           if (dl > 0.3) { a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp); }
           else a.vel.set(0, 0, 0);
           if (mine && d < ENEMY_REACH && e.timer <= 0 && !a.busy) {
-            a.act(C.ENEMY_ATTACK, 0.95);
+            e.attackDur = a.act(C.ENEMY_ATTACK, 0.95);
             a.vel.set(0, 0, 0);
             e.state = 'windup';
-            e.timer = C.ENEMY_ATTACK.dur;
+            e.timer = e.attackDur;
           }
           break;
         }
 
         case 'windup':
           a.vel.set(0, 0, 0);
-          if (e.timer > C.ENEMY_ATTACK.dur * 0.5) a.face(target.pos.x, target.pos.z);
+          if (e.timer > e.attackDur * 0.5) a.face(target.pos.x, target.pos.z);
           if (e.timer <= 0) { e.state = 'recover'; e.timer = 0.35 + this.rand() * 0.6; }
           break;
 
@@ -425,9 +449,8 @@ export class CombatDirector {
 
       a.setLocomotion(C.ENEMY_IDLE, C.ENEMY_RUN, C.ENEMY_RUN);
       a.update(dt);
-      const seg = a.weaponSegment();
       a.setTrail(a.hitOpen ? 1 : 0);
-      this.tickTrailAndHits(a, dt, seg, 'player', ENEMY_REACH);
+      this.sweepAttack(a, this.playerTargets, (_t, at) => this.hurtPlayer(a, at));
     }
 
     // reap fully dissolved enemies
@@ -524,65 +547,86 @@ export class CombatDirector {
     // the free chuck spins constantly — it is most of what sells the character
     if (a.fighter.freeChuck) a.fighter.freeChuck.setLocalEulerAngles(0, 0, (this.time * 620) % 360);
     a.update(dt);
-    const seg = a.weaponSegment();
     a.setTrail(a.hitOpen ? 1 : 0.25);
-    this.tickTrailAndHits(a, dt, seg, 'enemy', 2.3);
+    this.sweepAttack(a, this.enemyActors(), (t, at) => this.landHit(a, this.enemyOf(t), at));
   }
 
   // ---------------------------------------------------------------- hits
 
   /**
-   * One swing = one damage window. While it is open, anything on the other team inside the arc
-   * takes the hit exactly once, and the impact is spent on feedback: hit-stop, shake, sparks.
+   * Sweep an attacker's blade through the frame against every candidate body. A target is hit at
+   * most once per swing, only while the clip's damage window is open, only if it sits in front of
+   * the attacker, and only if nothing solid stands between the attacker and the point of contact.
    */
-  private tickTrailAndHits(src: Actor, _dt: number, seg: { base: Vec3; tip: Vec3 }, vs: 'enemy' | 'player', reach: number): void {
+  private sweepAttack(src: Actor, targets: readonly Actor[], onHit: (target: Actor, at: Vec3) => void): void {
     if (!src.hitOpen) return;
-    const mid = this.tmp.set((seg.base.x + seg.tip.x) * 0.5, (seg.base.y + seg.tip.y) * 0.5, (seg.base.z + seg.tip.z) * 0.5);
-
-    if (vs === 'enemy') {
-      for (const e of this.enemies) {
-        if (e.actor.dead || src.hitThisSwing.has(e.actor)) continue;
-        const d = Math.hypot(e.actor.pos.x - src.pos.x, e.actor.pos.z - src.pos.z);
-        if (d > reach + e.actor.radius) continue;
-        // must be in the forward half — a swing does not hit behind you
-        const dx = e.actor.pos.x - src.pos.x, dz = e.actor.pos.z - src.pos.z;
-        const fx = -Math.sin(src.yaw), fz = -Math.cos(src.yaw);
-        if ((dx * fx + dz * fz) / Math.max(0.01, d) < 0.1) continue;
-        src.hitThisSwing.add(e.actor);
-        this.landHit(src, e, mid);
-      }
-    } else {
-      if (src.hitThisSwing.has(this.player) || this.playerHurtCd > 0) return;
-      const d = Math.hypot(this.player.pos.x - src.pos.x, this.player.pos.z - src.pos.z);
-      if (d > reach + 0.4) return;
-      const dx = this.player.pos.x - src.pos.x, dz = this.player.pos.z - src.pos.z;
-      const fx = -Math.sin(src.yaw), fz = -Math.cos(src.yaw);
-      if ((dx * fx + dz * fz) / Math.max(0.01, d) < 0.1) return;
-      src.hitThisSwing.add(this.player);
-      // a dodge in progress is full invulnerability — that is the whole point of the button
-      if (this.player.anim.actionName === 'dodge') { this.fx.spark(mid, new Color(0.7, 0.95, 1), 6); return; }
-      this.playerHurtCd = 0.7;
-      this.playerHealth = Math.max(0, this.playerHealth - (src.fighter.height > 1.9 ? 22 : 13));
-      this.player.act(C.HIT_REACT, 0.7);
-      this.fx.spark(mid, new Color(1.0, 0.5, 0.5), 14);
-      this.audio.playCombat('hurt', this.player.pos);
-      this.hitStop = 0.05;
-      this.shake = 1;
-      this.hud.flashDamage();
-      if (this.playerHealth <= 0) this.respawnPlayer();
+    const sweep = src.bladeSweep();
+    let landed = false;
+    for (const t of targets) {
+      if (t === src || t.dead || src.hitThisSwing.has(t)) continue;
+      if (facingDot(src.pos.x, src.pos.z, src.yaw, t.pos.x, t.pos.z) < COMBAT.blade.minFacingDot) continue;
+      if (!sweepBlade(sweep, t.capsule(), COMBAT.blade.thickness, COMBAT.blade.maxSubStep, this.hitOut)) continue;
+      if (this.blocked(src.chest, this.hitOut.point)) continue;
+      src.hitThisSwing.add(t);
+      landed = true;
+      this.debugDraw.point(this.hitOut.point);
+      onHit(t, this.hitOut.point);
     }
+    this.debugDraw.sweep(sweep, landed);
+  }
+
+  /** Is there level geometry between two points? Terrain does not count: fights are on open stone. */
+  private blocked(from: Vec3, to: Vec3): boolean {
+    this.rayDir.sub2(to, from);
+    const dist = this.rayDir.length();
+    if (dist < 0.05) return false;
+    this.rayDir.mulScalar(1 / dist);
+    return this.world.collision.rayDistance(from, this.rayDir, dist) < dist - 0.05;
+  }
+
+  private enemyActors(): Actor[] {
+    this.enemyActorList.length = 0;
+    for (const e of this.enemies) if (!e.actor.dead) this.enemyActorList.push(e.actor);
+    return this.enemyActorList;
+  }
+
+  private enemyOf(a: Actor): Enemy {
+    const e = this.enemies.find((en) => en.actor === a);
+    if (!e) throw new Error('actor is not an enemy');
+    return e;
+  }
+
+  /** An enemy blade reached the player. The dodge's opening and the hurt cooldown are honoured here. */
+  private hurtPlayer(src: Actor, at: Vec3): void {
+    const p = this.player;
+    if (p.invulnerable > 0) { this.fx.spark(at, new Color(0.7, 0.95, 1), 6); return; }
+    if (this.playerHurtCd > 0) return;
+    const name = src.anim.actionName ?? '';
+    let dmg = COMBAT.enemy.damage[name] ?? 12;
+    if (src.fighter.scale > 1.05) dmg = Math.round(dmg * 1.3);
+    this.playerHurtCd = COMBAT.player.hurtCooldown;
+    this.playerHealth = Math.max(0, this.playerHealth - dmg);
+    p.act(C.HIT_REACT, 0.7);
+    this.fx.spark(at, new Color(1.0, 0.5, 0.5), 14);
+    this.audio.playCombat('hurt', p.pos);
+    this.hitStop = COMBAT.feel.hitStopHurt;
+    this.shake = COMBAT.feel.shakeHurt;
+    this.hud.flashDamage();
+    if (this.playerHealth <= 0) this.respawnPlayer();
   }
 
   private landHit(src: Actor, e: Enemy, at: Vec3): void {
-    const heavy = src.anim.actionName === 'heavy';
-    const dmg = src.team === 'player' ? (heavy ? 55 : 26) : 18;
+    const name = src.anim.actionName ?? '';
+    const heavy = name === 'heavy' || name === 'nunFlourish';
+    const table = src.team === 'player' ? COMBAT.player.damage : COMBAT.ally.damage;
+    const dmg = table[name] ?? (src.team === 'player' ? 12 : 8);
     const killed = e.actor.damage(dmg);
     const col = src.team === 'player' ? new Color(0.75, 0.95, 1.0) : new Color(1.0, 0.7, 0.35);
     this.fx.spark(at, col, heavy ? 26 : 15);
     this.fx.slashArc(at, src.yaw, heavy ? 1.5 : 1.0, col);
     this.audio.playCombat(heavy ? 'impactHeavy' : 'impact', at);
-    this.hitStop = heavy ? 0.075 : 0.042;
-    if (src.team === 'player') this.shake = heavy ? 1 : 0.55;
+    this.hitStop = heavy ? COMBAT.feel.hitStopHeavy : COMBAT.feel.hitStopLight;
+    if (src.team === 'player') this.shake = heavy ? COMBAT.feel.shakeHeavy : COMBAT.feel.shakeLight;
 
     if (killed) {
       e.state = 'dying';
@@ -591,15 +635,14 @@ export class CombatDirector {
       e.actor.hitOpen = false;
       this.fx.dissolveBurst(e.actor.chest, e.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.65, 0.35, 0.95));
       this.audio.playCombat('defeat', e.actor.pos);
-    } else if (e.state !== 'windup' || this.rand() < 0.5) {
-      e.actor.act(C.STAGGER, 0.8);
+    } else if (e.state !== 'windup' || this.rand() < COMBAT.enemy.staggerOnWindup) {
+      e.timer = e.actor.act(C.STAGGER, 0.8) * 0.8;
       e.state = 'stagger';
-      e.timer = C.STAGGER.dur * 0.8;
     }
   }
 
   private respawnPlayer(): void {
-    this.playerHealth = 100;
+    this.playerHealth = COMBAT.player.maxHealth;
     this.hud.showToast('THE SHRINE PULLS YOU BACK', 3);
     // send the player back to the edge of the encounter rather than ending the run
     const e = this.active;
@@ -632,9 +675,14 @@ export class CombatDirector {
   }
 
   liveEnemies(): number { return this.enemies.filter((e) => !e.actor.dead).length; }
-  get health01(): number { return this.playerHealth / 100; }
+  get health01(): number { return this.playerHealth / COMBAT.player.maxHealth; }
   get inCombat(): boolean { return this.liveEnemies() > 0; }
   get bannerText(): string { return this.banner; }
+
+  /** Every enemy is the skinned orange swordsman; the elite is the same body a little larger. */
+  private enemyFighter(kind: EnemyKind): Fighter {
+    return makeSkinnedFighter(this.ctx, requireModel(this.assets, 'char/enemy'), 'enemy', { scale: kind === 'elite' ? 1.08 : 1 });
+  }
 
   /**
    * Tooling: line the three fighters up in front of the camera, each running a chosen clip.
@@ -660,12 +708,12 @@ export class CombatDirector {
     void g;
 
     if (!this.enemies.some((e) => e.encounter === -1)) {
-      const fighter = makeEnemy(this.ctx, 'blade', 0.5);
+      const fighter = this.enemyFighter('blade');
       const a = new Actor(this.ctx, {
         fighter, team: 'enemy', ground: (gx, gz) => this.world.field.heightAt(gx, gz),
         trailColor: new Color(0.75, 0.4, 1.0), maxHealth: 9999, runSpeed: 4.4,
       });
-      const en: Enemy = { actor: a, state: 'idle', timer: 9999, kind: 'blade', slot: 0, dieT: 0, encounter: -1 };
+      const en: Enemy = { actor: a, state: 'idle', timer: 9999, attackDur: 0.5, kind: 'blade', slot: 0, dieT: 0, encounter: -1 };
       a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
       this.enemies.push(en);
     }
@@ -718,7 +766,7 @@ export class CombatDirector {
     const p = this.player;
     if (p.busy) return false;
     if (kind === 'heavy') { p.act(C.HEAVY, 0.92); this.combo = 0; }
-    else if (kind === 'dodge') { p.act(C.DODGE, 0.8); this.lungeScale = 1; this.fx.dust(p.pos, 10); this.softTargetFace(); return true; }
+    else if (kind === 'dodge') { p.act(C.DODGE, 0.8); p.invulnerable = COMBAT.player.dodgeInvulnerable; this.lungeScale = 1; this.fx.dust(p.pos, 10); this.softTargetFace(); return true; }
     else {
       const clip = this.combo === 0 ? C.SLASH_1 : this.combo === 1 ? C.SLASH_2 : C.SLASH_3;
       p.act(clip, this.combo === 2 ? 0.9 : 0.68);
@@ -742,6 +790,10 @@ export class CombatDirector {
     for (let i = 0; i < n; i++) this.update(step, input, false);
   }
 
+  /** F2: draw hurt capsules, blade sweeps and contact points. */
+  toggleHitboxes(): boolean { return this.debugDraw.toggle(); }
+  setHitboxes(on: boolean): void { this.debugDraw.enabled = on; }
+
   /** Tooling: enemy health, so a scripted fight can assert that hits actually land. */
   debugEnemyHealth(): number[] { return this.enemies.map((e) => Math.round(e.actor.health)); }
 
@@ -757,7 +809,7 @@ export class CombatDirector {
     return {
       enemies: this.liveEnemies(), health: Math.round(this.playerHealth), combo: this.combo,
       encounter: this.active?.id ?? -1, fx: this.fx.active,
-      lock: this.player.lockLeft.toFixed(2), act: this.player.anim.actionName ?? '-',
+      lock: this.player.lockLeft.toFixed(2), act: this.player.anim.actionName ?? '-', hitOpen: this.player.hitOpen, iframes: this.player.invulnerable.toFixed(2),
       preview: this.previewMode ?? '-',
       nearest: this.enemies.length ? Math.min(...this.enemies.map((e) => e.actor.distanceTo(this.player))).toFixed(1) : '-',
       foes: this.enemies.map((e) => `${e.state}@${e.actor.distanceTo(this.player).toFixed(1)}v${Math.hypot(e.actor.vel.x, e.actor.vel.z).toFixed(1)}`).join(' '),

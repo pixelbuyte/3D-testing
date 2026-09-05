@@ -30,7 +30,7 @@ export const MODELS = [
 export type ModelId = (typeof MODELS)[number];
 
 /** skinned characters built by tools/build-character.py: assets/characters/<id>.glb */
-export const CHARACTERS = ['player'] as const;
+export const CHARACTERS = ['player', 'enemy', 'ally'] as const;
 
 export const SKY_HDR = 'kloppenheim_06_2k.hdr';
 
