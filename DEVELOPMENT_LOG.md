@@ -162,3 +162,29 @@ They are items 1 and 2 of the next-session plan in `SESSION_REPORT.md`.
 
 **FPS.** Not measurable here (SwiftShader). Draw calls 3,145 in the courtyard 1v1 at the medium
 preset; bundle 242.9 kB + 1,408 kB PlayCanvas; GLBs ≈ 5 MB each.
+
+## 20:25 UTC — checkpoint 5 (precision pass and the character look)
+
+**Found.** The "pixelated" characters are the outfit atlas, not the mesh or the renderer: the
+recolour masks were rasterised exactly on the UV islands, so every gutter between islands kept the
+source atlas's pale colour. Bilinear filtering and every mip level read a texel or two past the
+island edge, which put a bright speckled fringe on every panel of the outfit at any distance.
+The tint masks are now grown into the gutters (nearest-part label propagation, `pad_masks` in
+`tools/build-character.py`, working at 2048 before the 1024 output), the outfit JPEG is written at
+quality 94, and the cloth normal map is softened (0.8 → 0.45) so the shading reads as clean
+colour blocks like the reference plates. All three GLBs rebuilt.
+
+**Built.** Attack ids on every `act()`, a damage log (attack id, attacker, target, damage, time;
+`__ECHOES.hits()`), the anticipation / active / recovery phase from the animator, and the F1
+panel now shows `attack #id  frames ACTIVE  window OPEN` plus the last four damage events. The hit
+lab asserts that no (attack id, target) pair appears twice in the log. Code-review reuse
+cleanups applied: one `spawnEnemy` for the three ways a fight starts (which also retires the
+leftover purple trail on the preview enemy), one capsule-overlay submit for the live and the
+frozen frame, one `BASE_CLIPS` table spread into the three variants, `wrapAngle` in math.ts used
+by the animator, the soft-target and the sweep placement, `facingDot` in the soft-target, and the
+damage-window events moved onto `Actor.windowEvent`. A shadowed `heavy` recompute in `landHit`
+is deleted.
+
+**Testing.** Hit lab (with the id assertion), AI duel and movement lab running against the
+rebuilt GLBs; close-up render of the player at the high preset and the frozen-frame overlay
+queued on the production build.

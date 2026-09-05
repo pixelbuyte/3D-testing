@@ -1,4 +1,11 @@
 export const TAU = Math.PI * 2;
+
+/** the same angle in (-π, π] */
+export function wrapAngle(a: number): number {
+  a %= TAU;
+  if (a > Math.PI) a -= TAU; else if (a < -Math.PI) a += TAU;
+  return a;
+}
 export const DEG = Math.PI / 180;
 
 export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
@@ -12,8 +19,7 @@ export const smoothstep = (a: number, b: number, v: number): number => {
 /** Frame-rate independent exponential damping. `k` ≈ speed (1/s). */
 export const damp = (current: number, target: number, k: number, dt: number): number => lerp(current, target, 1 - Math.exp(-k * dt));
 export const dampAngle = (current: number, target: number, k: number, dt: number): number => {
-  let d = (target - current) % TAU;
-  if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU;
+  const d = wrapAngle(target - current);
   return current + d * (1 - Math.exp(-k * dt));
 };
 export const fract = (v: number): number => v - Math.floor(v);

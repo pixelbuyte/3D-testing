@@ -14,7 +14,7 @@ import { CombatFX } from './fx';
 import { COMBAT } from './config';
 import { CombatDebugDraw } from './debugdraw';
 import { facingDot, sweepBlade, type SweepHit } from './hitdetect';
-import { clamp01, damp, DEG, rng, smoothstep } from '@/utils/math';
+import { clamp01, damp, DEG, rng, smoothstep, wrapAngle } from '@/utils/math';
 
 /**
  * The combat layer.
@@ -100,6 +100,12 @@ export class CombatDirector {
   private enemyActorList: Actor[] = [];
   /** tooling: per-frame sweep records while set */
   trace: Record<string, unknown>[] | null = null;
+  /** the last damage events: attack id, attacker, target, damage, time — the F1 counters and the labs read it */
+  readonly hitLog: { t: number; attack: number; src: string; target: string; dmg: number }[] = [];
+  private logHit(src: Actor, target: Actor, dmg: number): void {
+    this.hitLog.push({ t: +this.time.toFixed(3), attack: src.attackId, src: src.id, target: target.id, dmg });
+    if (this.hitLog.length > 64) this.hitLog.shift();
+  }
   private nextEnemyId = 1;
   private playerTargets: Actor[] = [];
   private banner = '';
@@ -159,6 +165,8 @@ export class CombatDirector {
       },
     ];
 
+    this.player.id = 'P';
+    this.ally.id = 'A';
     this.player.anim.setEventHandler((n) => this.onPlayerEvent(n));
     this.ally.anim.setEventHandler((n) => this.onAllyEvent(n));
   }
@@ -179,8 +187,7 @@ export class CombatDirector {
       case 'chargeUp':
         this.fx.charge(p.weaponSegment().tip, new Color(0.55, 0.9, 1.0));
         break;
-      case 'hitOpen': p.hitOpen = true; p.hitThisSwing.clear(); break;
-      case 'hitClose': p.hitOpen = false; p.hitTail = true; break;
+      case 'hitOpen': case 'hitClose': p.windowEvent(name); break;
       case 'dodge': this.audio.playCombat('dodge', p.pos); break;
       case 'step': this.audio.playFootstep(this.world.field.surfaceAt(p.pos.x, p.pos.z), 0.7, false); break;
     }
@@ -190,8 +197,7 @@ export class CombatDirector {
     const a = this.ally;
     switch (name) {
       case 'swing': a.setTrail(1); this.audio.playCombat('swingLight', a.pos); break;
-      case 'hitOpen': a.hitOpen = true; a.hitThisSwing.clear(); break;
-      case 'hitClose': a.hitOpen = false; a.hitTail = true; break;
+      case 'hitOpen': case 'hitClose': a.windowEvent(name); break;
       case 'step': this.audio.playFootstep(this.world.field.surfaceAt(a.pos.x, a.pos.z), 0.5, false); break;
     }
   }
@@ -215,11 +221,7 @@ export class CombatDirector {
     this.updateAlly(dt);
     this.separate(dt);
 
-    if (this.debugDraw.enabled) {
-      this.debugDraw.capsule(this.player.capsule(), this.playerHurtCd > 0);
-      if (this.ally.root.enabled) this.debugDraw.capsule(this.ally.capsule());
-      for (const e of this.enemies) if (!e.actor.dead) this.debugDraw.capsule(e.actor.capsule());
-    }
+    this.submitCapsules();
     this.debugDraw.update(dt);
 
     this.shake = damp(this.shake, 0, 7, dt);
@@ -251,20 +253,8 @@ export class CombatDirector {
       for (let i = 0; i < e.spawns.length; i++) {
         const sp = e.spawns[i];
         const x = e.x + sp.dx, z = e.z + sp.dz;
-        const a = new Actor(this.ctx, {
-          fighter: this.enemyFighter(sp.kind),
-          team: 'enemy',
-          ground: (gx, gz) => this.world.field.heightAt(gx, gz),
-          trailColor: sp.kind === 'elite' ? new Color(1.0, 0.35, 0.4) : new Color(0.75, 0.4, 1.0),
-          trailLife: 0.13,
-          maxHealth: COMBAT.enemy.maxHealth[sp.kind] ?? 65,
-          runSpeed: sp.kind === 'elite' ? 3.6 : 4.4,
-        });
-        a.spawn(x, z, 180);
-        const en: Enemy = { actor: a, state: 'idle', timer: 0.35 + i * 0.22, attackDur: 0.5, id: this.nextEnemyId++, cooldown: 0.6 + i * 0.3, moving: false, kind: sp.kind, slot: i, dieT: 0, encounter: e.id };
-        a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
-        this.enemies.push(en);
-        this.fx.spawnPuff(a.pos, sp.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.6, 0.3, 0.9));
+        const en = this.spawnEnemy(sp.kind, x, z, 180, { encounter: e.id, slot: i, timer: 0.35 + i * 0.22, cooldown: 0.6 + i * 0.3 });
+        this.fx.spawnPuff(en.actor.pos, sp.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.6, 0.3, 0.9));
       }
       if (e.allyJoins && !this.allySpawned) {
         this.allySpawned = true;
@@ -283,8 +273,7 @@ export class CombatDirector {
         this.audio.playCombat('telegraph', en.actor.pos);
         break;
       case 'swing': en.actor.setTrail(1); this.audio.playCombat('swingEnemy', en.actor.pos); break;
-      case 'hitOpen': en.actor.hitOpen = true; en.actor.hitThisSwing.clear(); break;
-      case 'hitClose': en.actor.hitOpen = false; en.actor.hitTail = true; break;
+      case 'hitOpen': case 'hitClose': en.actor.windowEvent(name); break;
       case 'step': this.audio.playFootstep(this.world.field.surfaceAt(en.actor.pos.x, en.actor.pos.z), 0.55, false); break;
     }
   }
@@ -371,19 +360,14 @@ export class CombatDirector {
       if (e.actor.dead) continue;
       const d = e.actor.distanceTo(this.player);
       if (d > bd) continue;
-      const dx = e.actor.pos.x - this.player.pos.x, dz = e.actor.pos.z - this.player.pos.z;
-      const fx = -Math.sin(this.controller.yaw), fz = -Math.cos(this.controller.yaw);
-      if ((dx * fx + dz * fz) / Math.max(0.01, d) < 0.25) continue;   // must be roughly in front
+      if (facingDot(this.player.pos.x, this.player.pos.z, this.controller.yaw, e.actor.pos.x, e.actor.pos.z) < 0.25) continue;   // must be roughly in front
       bd = d; best = e;
     }
     this.lungeScale = best ? clamp01((bd - 1.5) / 1.6) : 0.12;
     if (best) {
       const want = Math.atan2(-(best.actor.pos.x - this.player.pos.x), -(best.actor.pos.z - this.player.pos.z));
       // nudge the camera yaw rather than snapping it: the player keeps authority
-      let d = want - this.controller.yaw;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      this.controller.nudgeYaw(d * 0.55);
+      this.controller.nudgeYaw(wrapAngle(want - this.controller.yaw) * 0.55);
     }
   }
 
@@ -673,6 +657,7 @@ export class CombatDirector {
     if (src.fighter.scale > 1.05) dmg = Math.round(dmg * 1.3);
     this.playerHurtCd = COMBAT.player.hurtCooldown;
     this.playerHealth = Math.max(0, this.playerHealth - dmg);
+    this.logHit(src, p, dmg);
     p.act(C.HIT_REACT, 0.7);
     this.fx.spark(at, new Color(1.0, 0.5, 0.5), 14);
     this.audio.playCombat('hurt', p.pos);
@@ -688,6 +673,7 @@ export class CombatDirector {
     const table = src.team === 'player' ? COMBAT.player.damage : COMBAT.ally.damage;
     const dmg = table[name] ?? (src.team === 'player' ? 12 : 8);
     const killed = e.actor.damage(dmg);
+    this.logHit(src, e.actor, dmg);
     const col = src.team === 'player' ? new Color(0.75, 0.95, 1.0) : new Color(1.0, 0.7, 0.35);
     this.fx.spark(at, col, heavy ? 26 : 15);
     this.fx.slashArc(at, src.yaw, heavy ? 1.5 : 1.0, col);
@@ -703,7 +689,6 @@ export class CombatDirector {
       this.fx.dissolveBurst(e.actor.chest, e.kind === 'elite' ? new Color(1, 0.4, 0.45) : new Color(0.65, 0.35, 0.95));
       this.audio.playCombat('defeat', e.actor.pos);
     } else {
-      const heavy = (src.anim.actionName === 'heavy' || src.anim.actionName === 'nunFlourish');
       const windingUp = e.state === 'attack' && !e.actor.hitOpen && e.timer > e.attackDur * 0.5;
       const swinging = e.state === 'attack' && !windingUp;
       if (heavy || (windingUp && this.rand() < COMBAT.enemy.staggerOnWindup)) {
@@ -758,6 +743,22 @@ export class CombatDirector {
   get inCombat(): boolean { return this.liveEnemies() > 0; }
   get bannerText(): string { return this.banner; }
 
+  /** Every enemy body is built here, so the three ways a fight can start cannot drift apart. */
+  private spawnEnemy(kind: EnemyKind, x: number, z: number, yawDeg: number,
+    o: { encounter: number; slot?: number; timer?: number; cooldown?: number; held?: boolean; maxHealth?: number }): Enemy {
+    const a = new Actor(this.ctx, {
+      fighter: this.enemyFighter(kind), team: 'enemy', ground: (gx, gz) => this.world.field.heightAt(gx, gz),
+      trailColor: kind === 'elite' ? new Color(1.0, 0.35, 0.4) : new Color(1.0, 0.55, 0.2), trailLife: 0.13,
+      maxHealth: o.maxHealth ?? COMBAT.enemy.maxHealth[kind] ?? 65, runSpeed: kind === 'elite' ? 3.6 : 4.4,
+    });
+    a.spawn(x, z, yawDeg);
+    const en: Enemy = { actor: a, state: 'idle', timer: o.timer ?? 0, attackDur: 0.5, id: this.nextEnemyId++, cooldown: o.cooldown ?? 0, moving: false, held: o.held, kind, slot: o.slot ?? 0, dieT: 0, encounter: o.encounter };
+    a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
+    a.id = `e${en.id}`;
+    this.enemies.push(en);
+    return en;
+  }
+
   /** Every enemy is the skinned orange swordsman; the elite is the same body a little larger. */
   private enemyFighter(kind: EnemyKind): Fighter {
     return makeSkinnedFighter(this.ctx, requireModel(this.assets, 'char/enemy'), 'enemy', { scale: kind === 'elite' ? 1.08 : 1 });
@@ -786,16 +787,7 @@ export class CombatDirector {
     this.allySpawned = true;
     void g;
 
-    if (!this.enemies.some((e) => e.encounter === -1)) {
-      const fighter = this.enemyFighter('blade');
-      const a = new Actor(this.ctx, {
-        fighter, team: 'enemy', ground: (gx, gz) => this.world.field.heightAt(gx, gz),
-        trailColor: new Color(0.75, 0.4, 1.0), maxHealth: 9999, runSpeed: 4.4,
-      });
-      const en: Enemy = { actor: a, state: 'idle', timer: 9999, attackDur: 0.5, id: this.nextEnemyId++, cooldown: 0, moving: false, kind: 'blade', slot: 0, dieT: 0, encounter: -1 };
-      a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
-      this.enemies.push(en);
-    }
+    if (!this.enemies.some((e) => e.encounter === -1)) this.spawnEnemy('blade', x, z, 0, { encounter: -1, maxHealth: 9999, timer: 9999 });
     const en = this.enemies.find((e) => e.encounter === -1)!;
     place(en.actor, 1.9);
     en.state = 'idle';
@@ -880,11 +872,16 @@ export class CombatDirector {
   /** F2: draw hurt capsules, blade sweeps and contact points. */
   toggleHitboxes(): boolean { return this.debugDraw.toggle(); }
 
-  /** Tooling: re-submit the overlay for a frame in which the fight itself is frozen. */
-  drawDebugFrame(): void {
+  private submitCapsules(): void {
     if (!this.debugDraw.enabled) return;
     this.debugDraw.capsule(this.player.capsule(), this.playerHurtCd > 0);
+    if (this.ally.root.enabled) this.debugDraw.capsule(this.ally.capsule());
     for (const e of this.enemies) if (!e.actor.dead) this.debugDraw.capsule(e.actor.capsule());
+  }
+
+  /** Tooling: re-submit the overlay for a frame in which the fight itself is frozen. */
+  drawDebugFrame(): void {
+    this.submitCapsules();
     this.debugDraw.update(0);
   }
   setHitboxes(on: boolean): void { this.debugDraw.enabled = on; }
@@ -911,14 +908,7 @@ export class CombatDirector {
     this.allySpawned = false;
     this.ally.root.enabled = false;
     this.attackToken = null;
-    const a = new Actor(this.ctx, {
-      fighter: this.enemyFighter('blade'), team: 'enemy', ground: (gx, gz) => this.world.field.heightAt(gx, gz),
-      trailColor: new Color(1.0, 0.55, 0.2), trailLife: 0.13, maxHealth: COMBAT.enemy.maxHealth.blade, runSpeed: 4.4,
-    });
-    if (place) a.spawn(place.ex, place.ez, 0); else a.spawn(px, pz + dist, 0);
-    const en: Enemy = { actor: a, state: 'idle', timer: hold ? 1e9 : 0.4, attackDur: 0.5, id: this.nextEnemyId++, cooldown: 0.8, moving: false, held: hold, kind: 'blade', slot: 0, dieT: 0, encounter: -2 };
-    a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
-    this.enemies.push(en);
+    this.spawnEnemy('blade', place ? place.ex : px, place ? place.ez : pz + dist, 0, { encounter: -2, timer: hold ? 1e9 : 0.4, cooldown: 0.8, held: hold });
     this.passToken();
   }
 
@@ -935,6 +925,8 @@ export class CombatDirector {
       enemies: this.liveEnemies(), health: Math.round(this.playerHealth), combo: this.combo,
       encounter: this.active?.id ?? -1, fx: this.fx.active,
       lock: this.player.lockLeft.toFixed(2), act: this.player.anim.actionName ?? '-', hitOpen: this.player.hitOpen, iframes: this.player.invulnerable.toFixed(2),
+      attackId: this.player.attackId, phase: this.player.anim.phase,
+      hits: this.hitLog.slice(-4).map((h) => `#${h.attack} ${h.src}>${h.target} ${h.dmg}`).join('  '),
       preview: this.previewMode ?? '-',
       nearest: this.enemies.length ? Math.min(...this.enemies.map((e) => e.actor.distanceTo(this.player))).toFixed(1) : '-',
       foes: this.enemies.map((e) => `${e.state}@${e.actor.distanceTo(this.player).toFixed(1)}v${Math.hypot(e.actor.vel.x, e.actor.vel.z).toFixed(1)}`).join(' '),

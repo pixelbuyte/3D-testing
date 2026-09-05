@@ -49,56 +49,48 @@ interface SkinnedClipDef {
   flinch?: { strength: number; dur: number };
 }
 
-/** procedural clip name (what the director passes) → how the skinned body plays it */
-const PLAYER_CLIPS: Record<string, SkinnedClipDef> = {
+const SWING = (t0: number, t1: number, t2: number) => [{ t: t0, name: 'swing' }, { t: t1, name: 'hitOpen' }, { t: t2, name: 'hitClose' }];
+
+/** what every body shares: stance, locomotion with its measured stride, the recoil, death, the sword recoveries */
+const BASE_CLIPS: Record<string, SkinnedClipDef> = {
   idle: { track: 'idle', loop: true },
   guard: { track: 'guard', loop: true },
   walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
   run: { track: 'run', loop: true, naturalSpeed: 3.81 },
-  slash1: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: [{ t: 0.28, name: 'swing' }, { t: 0.36, name: 'hitOpen' }, { t: 0.80, name: 'hitClose' }] },
-  slash2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: [{ t: 0.26, name: 'swing' }, { t: 0.32, name: 'hitOpen' }, { t: 0.72, name: 'hitClose' }] },
-  slash3: { track: 'slash3', rootMotion: 1, events: [{ t: 0.34, name: 'swing' }, { t: 0.40, name: 'hitOpen' }, { t: 0.64, name: 'hitClose' }] },
-  heavy: { track: 'heavy', rootMotion: 1, events: [{ t: 0.38, name: 'swing' }, { t: 0.44, name: 'hitOpen' }, { t: 0.70, name: 'hitClose' }] },
-  dodge: { track: 'dodge', rootMotion: 1 },
   hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
   death: { track: 'death', hold: true, rootMotion: 1, ground: false },
   slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
   slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
 
-const SWING = (t0: number, t1: number, t2: number) => [{ t: t0, name: 'swing' }, { t: t1, name: 'hitOpen' }, { t: t2, name: 'hitClose' }];
+/** procedural clip name (what the director passes) → how the skinned body plays it */
+const PLAYER_CLIPS: Record<string, SkinnedClipDef> = {
+  ...BASE_CLIPS,
+  slash1: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: SWING(0.28, 0.36, 0.80) },
+  slash2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
+  slash3: { track: 'slash3', rootMotion: 1, events: SWING(0.34, 0.40, 0.64) },
+  heavy: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
+  dodge: { track: 'dodge', rootMotion: 1 },
+};
 
 /** the orange swordsman: the director's enemy clip names onto the same tracks */
 const ENEMY_CLIPS: Record<string, SkinnedClipDef> = {
-  idle: { track: 'idle', loop: true },
-  guard: { track: 'guard', loop: true },
+  ...BASE_CLIPS,
   enemyIdle: { track: 'guard', loop: true },
-  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
-  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
   enemyRun: { track: 'run', loop: true, naturalSpeed: 3.81 },
   enemyAttack: { track: 'slash1', next: 'slash1_rec', rootMotion: 1, events: SWING(0.28, 0.36, 0.80) },
   enemyAttack2: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
   enemyHeavy: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
-  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
   stagger: { track: 'guard', flinch: { strength: 1.7, dur: 0.55 } },
-  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
-  slash1_rec: { track: 'slash1_rec', rootMotion: 1 },
-  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
 
 /** the nunchuck ally: fast strikes on the short sword clips, the spin on the heavy */
 const ALLY_CLIPS: Record<string, SkinnedClipDef> = {
-  idle: { track: 'idle', loop: true },
-  guard: { track: 'guard', loop: true },
+  ...BASE_CLIPS,
   nunIdle: { track: 'guard', loop: true },
-  walk: { track: 'walk', loop: true, naturalSpeed: 1.64 },
-  run: { track: 'run', loop: true, naturalSpeed: 3.81 },
   nunCombo: { track: 'slash2', next: 'slash2_rec', rootMotion: 1, events: SWING(0.26, 0.32, 0.72) },
   nunFlourish: { track: 'heavy', rootMotion: 1, events: SWING(0.38, 0.44, 0.70) },
   dodge: { track: 'dodge', rootMotion: 1 },
-  hit: { track: 'guard', flinch: { strength: 1, dur: 0.34 } },
-  death: { track: 'death', hold: true, rootMotion: 1, ground: false },
-  slash2_rec: { track: 'slash2_rec', rootMotion: 1 },
 };
 
 export type Variant = 'player' | 'enemy' | 'ally';
@@ -247,6 +239,16 @@ export class SkinnedAnimator implements FighterAnimator {
   get grounded(): boolean { return this.action?.def.ground !== false; }
   /** the skinned hands come from the animation itself; nothing to solve */
   get offHandOnWeapon(): boolean { return false; }
+
+  get phase(): 'anticipation' | 'active' | 'recovery' | '-' {
+    const ac = this.action;
+    if (!ac) return '-';
+    if (ac.recovery) return 'recovery';
+    const open = ac.def.events?.find((e) => e.name === 'hitOpen'), close = ac.def.events?.find((e) => e.name === 'hitClose');
+    if (!open || !close) return '-';
+    const p = this.actionProgress;
+    return p < open.t ? 'anticipation' : p < close.t ? 'active' : 'recovery';
+  }
 
   get sweeping(): boolean {
     const ac = this.action;
