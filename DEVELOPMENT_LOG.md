@@ -108,3 +108,37 @@ line of sight could miss anything thinner than 0.5 m (replaced). `preview('hit')
 
 **Next.** Read the lab results, fix what they show, re-render the 1v1 from the gameplay camera with
 the F2 overlay, production build, SESSION_REPORT.md.
+
+## 15:50 UTC — checkpoint 4
+
+**Built.** Commits `df6c87b` and the recoil follow-up pushed to PR #2. The hit recoil now snaps
+in over its first 15%, holds through 40% and eases out, with larger spine, chest and head angles
+so it reads at gameplay distance. `__ECHOES.pause(on)` freezes the loop (the F2 overlay keeps
+redrawing) so captures can read exact frames. README combat section rewritten for the skinned
+pipeline and swept-blade hits; SESSION_REPORT.md drafted.
+
+**Tested — the full lab batch passes at every step size** (details in the session report):
+hit lab 12/14/18 + heavy at 1/60…1/10; AI duel ends in 4.9 s / 12.9 s with no stuck state, no
+attacks after death, no NaN; movement lab (sprint-in swing, strafing under attack, turning swing,
+back-turned swing) correct at 1/60 and 1/20; wall lab 0 damage through the 1.1 m lantern pillar
+and full damage on open ground at both steps; slope lab (17° patch, enemy uphill and downhill)
+full damage at both steps.
+
+**Bugs found / fixed.** The first gameplay-camera fight capture showed a scripted player losing
+90 HP while landing nothing after its second hit; a deterministic replay of the same script
+(loop paused) showed a normal fight (one enemy hit taken, enemy dead at 2.95 s). The difference
+was the capture's player standing still while the enemy stepped out of reach after every attack
+and its dodge sliding *into* the swing at random phases: a script problem, not a combat one. The
+capture script now closes the gap and dodges on the frame the enemy commits. Captures with the
+full post-processing preset timed out on SwiftShader; they use the fast preset now.
+
+**Known edge (documented, not fixed):** a swing whose contact point falls beside a 0.11 m torii
+post is not blocked because the blade genuinely passes on that side; against very thin geometry
+the per-swing outcome can differ between step sizes (12/0/18/28 vs 12/0/18/0). Thick walls are
+consistent.
+
+**FPS.** SwiftShader only; draw calls and triangles are read from the production build for the
+report.
+
+**Next.** Finish the gameplay-camera fight capture and the frozen-frame overlay and hit-reaction
+sheets, assemble the GIF, replace the README combat plates, finish SESSION_REPORT.md, push.

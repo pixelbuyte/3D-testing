@@ -152,7 +152,7 @@ export class Game {
   private paused = false;
 
   private update(dt: number): void {
-    if (this.paused) { this.input.endFrame(); return; }
+    if (this.paused) { this.combat.drawDebugFrame(); this.input.endFrame(); return; }
     // Measure against the wall clock, not dt: the engine clamps dt to maxDeltaTime, so dividing by
     // it reports the clamp (a flat 10) rather than the frame rate, which hid a 10x slowdown.
     const now = performance.now();

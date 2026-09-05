@@ -879,6 +879,14 @@ export class CombatDirector {
 
   /** F2: draw hurt capsules, blade sweeps and contact points. */
   toggleHitboxes(): boolean { return this.debugDraw.toggle(); }
+
+  /** Tooling: re-submit the overlay for a frame in which the fight itself is frozen. */
+  drawDebugFrame(): void {
+    if (!this.debugDraw.enabled) return;
+    this.debugDraw.capsule(this.player.capsule(), this.playerHurtCd > 0);
+    for (const e of this.enemies) if (!e.actor.dead) this.debugDraw.capsule(e.actor.capsule());
+    this.debugDraw.update(0);
+  }
   setHitboxes(on: boolean): void { this.debugDraw.enabled = on; }
 
   /** Tooling: enemy health, so a scripted fight can assert that hits actually land. */
