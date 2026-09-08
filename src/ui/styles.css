@@ -27,6 +27,8 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 .status { font-size: 11px; letter-spacing: 0.28em; color: var(--ink-dim); text-transform: uppercase; min-height: 14px; }
 .enter { margin-top: 6px; font-family: var(--sans); font-weight: 400; font-size: 12px; letter-spacing: 0.4em; color: var(--ink); background: transparent; border: 1px solid rgba(236,228,214,0.35); padding: 14px 30px 14px 34px; cursor: pointer; transition: all 0.4s ease; animation: pulse 3s ease-in-out infinite; }
 .enter:hover { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 30px rgba(216,178,115,0.25); }
+.character-viewer-link { color: var(--ink-dim); font-size: 10px; letter-spacing: .32em; text-decoration: none; transition: color .3s ease, letter-spacing .3s ease; }
+.character-viewer-link:hover { color: var(--teal); letter-spacing: .36em; }
 @keyframes pulse { 0%,100% { opacity: 0.75; } 50% { opacity: 1; } }
 .hint { font-size: 10px; letter-spacing: 0.22em; color: var(--ink-dim); }
 .loading-footer { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; font-size: 10px; letter-spacing: 0.3em; color: rgba(236,228,214,0.35); }

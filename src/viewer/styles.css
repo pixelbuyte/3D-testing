@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap');
+
+:root {
+  color: #efe9df;
+  background: #070b12;
+  font-family: Inter, system-ui, sans-serif;
+  font-synthesis: none;
+  --cyan: #8ee9f4;
+  --gold: #d6b477;
+  --ink: rgba(239, 233, 223, .92);
+  --dim: rgba(239, 233, 223, .48);
+}
+
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #070b12; overscroll-behavior: none; }
+body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(circle at 50% 45%, transparent 28%, rgba(2, 4, 8, .34) 76%, rgba(2, 3, 6, .82) 100%), linear-gradient(180deg, rgba(8, 15, 27, .08), rgba(3, 6, 11, .3)); }
+body::after { content: ''; position: fixed; inset: -50%; pointer-events: none; z-index: 2; opacity: .045; mix-blend-mode: soft-light; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.75'/%3E%3C/svg%3E"); }
+
+#viewer-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+#viewer-ui { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+
+.viewer-header { position: absolute; top: max(22px, env(safe-area-inset-top)); left: 0; right: 0; min-height: 52px; display: grid; grid-template-columns: 64px 1fr 64px; align-items: start; padding: 0 18px; }
+.close { pointer-events: auto; width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid rgba(214, 180, 119, .56); border-radius: 50%; color: var(--ink); background: rgba(7, 11, 18, .18); backdrop-filter: blur(8px); }
+.close svg { width: 23px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.viewer-title { justify-self: center; padding-top: 6px; font: 500 clamp(13px, 3vw, 20px)/1 'Cormorant Garamond', serif; letter-spacing: .36em; white-space: nowrap; text-shadow: 0 2px 18px #000; }
+.viewer-title span { display: block; width: 42px; height: 1px; margin: 13px auto 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.renderer { justify-self: end; padding-top: 9px; font-size: 8px; letter-spacing: .15em; color: var(--dim); text-transform: uppercase; }
+
+#selection { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.target-ring { position: absolute; width: 74px; height: 74px; translate: -50% -50%; border: 1px solid rgba(142, 233, 244, .9); border-radius: 50%; box-shadow: 0 0 25px rgba(75, 217, 237, .34), inset 0 0 22px rgba(75, 217, 237, .12); animation: target 2s ease-in-out infinite; }
+.target-ring::before, .target-ring::after { content: ''; position: absolute; inset: 8px; border: 1px solid rgba(142, 233, 244, .28); border-radius: inherit; }
+.selection-name { position: absolute; right: 48px; top: -13px; white-space: nowrap; translate: -100% 0; padding: 6px 9px; border-bottom: 1px solid rgba(142, 233, 244, .45); background: rgba(5, 10, 17, .56); font: 500 12px/1 'Cormorant Garamond', serif; letter-spacing: .14em; text-transform: uppercase; }
+@keyframes target { 50% { scale: 1.08; opacity: .72; } }
+
+#gesture-hint { position: absolute; left: 50%; bottom: calc(116px + env(safe-area-inset-bottom)); translate: -50% 0; width: 100%; padding: 0 22px; text-align: center; color: var(--dim); font-size: 9px; letter-spacing: .18em; text-shadow: 0 2px 10px #000; transition: opacity .5s ease; }
+
+.pose-bar { pointer-events: auto; position: absolute; left: 0; right: 0; bottom: 0; min-height: calc(94px + env(safe-area-inset-bottom)); padding: 12px max(12px, env(safe-area-inset-left)) env(safe-area-inset-bottom); display: flex; align-items: center; justify-content: center; gap: clamp(7px, 3vw, 28px); background: linear-gradient(180deg, rgba(6, 10, 17, .25), rgba(6, 10, 17, .92)); border-top: 1px solid rgba(239, 233, 223, .1); backdrop-filter: blur(13px); }
+.pose { position: relative; min-width: 58px; padding: 3px 4px 8px; border: 0; background: transparent; color: rgba(239, 233, 223, .48); display: grid; justify-items: center; gap: 5px; font: 500 12px/1 'Cormorant Garamond', serif; letter-spacing: .06em; cursor: pointer; }
+.pose svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.pose.active { color: var(--cyan); text-shadow: 0 0 16px rgba(142, 233, 244, .45); }
+.pose.active::after { content: ''; position: absolute; left: 18%; right: 18%; bottom: 0; height: 1px; background: var(--cyan); box-shadow: 0 0 9px var(--cyan); }
+.bar-rule { width: 1px; height: 42px; background: rgba(239, 233, 223, .15); }
+
+#viewer-loading { position: fixed; inset: 0; z-index: 10; display: grid; place-content: center; justify-items: center; gap: 18px; background: #070b12; transition: opacity .8s ease; }
+#viewer-loading.done { opacity: 0; pointer-events: none; }
+.loading-mark { width: 23px; height: 23px; rotate: 45deg; border: 1px solid var(--gold); animation: load 1.4s ease-in-out infinite; }
+.loading-copy { color: var(--dim); font-size: 9px; letter-spacing: .3em; }
+@keyframes load { 50% { rotate: 225deg; scale: .7; box-shadow: 0 0 24px rgba(214, 180, 119, .35); } }
+
+@media (min-width: 800px) {
+  .viewer-header { padding: 0 34px; grid-template-columns: 100px 1fr 100px; }
+  .pose-bar { left: 50%; right: auto; bottom: 24px; translate: -50% 0; min-width: 520px; min-height: 88px; padding: 12px 28px; border: 1px solid rgba(239, 233, 223, .12); background: rgba(6, 10, 17, .72); }
+  #gesture-hint { bottom: 126px; }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; } }

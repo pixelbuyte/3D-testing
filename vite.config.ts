@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   base: './',
@@ -14,6 +15,10 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
+      input: {
+        game: resolve(__dirname, 'index.html'),
+        viewer: resolve(__dirname, 'viewer.html'),
+      },
       output: {
         manualChunks: { playcanvas: ['playcanvas'] },
       },

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#070b12" />
+  <title>Character Viewer — Echoes of the Shrine</title>
+</head>
+<body>
+  <canvas id="viewer-canvas" aria-label="Interactive 3D character viewer"></canvas>
+
+  <main id="viewer-ui">
+    <header class="viewer-header">
+      <a class="close" href="./" aria-label="Return to the game">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </a>
+      <div class="viewer-title">CHARACTER VIEWER<span></span></div>
+      <div class="renderer" aria-live="polite"></div>
+    </header>
+
+    <div id="selection" hidden>
+      <span class="target-ring"></span>
+      <span class="selection-name"></span>
+    </div>
+
+    <div id="gesture-hint" aria-live="polite">DRAG TO ORBIT · PINCH TO ZOOM · TAP HEAD OR HAND</div>
+
+    <nav class="pose-bar" aria-label="Character animation">
+      <button class="pose active" data-pose="idle" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><path d="M12 8v7m-4-4 4-3 4 3m-6 4-2 6m6-6 2 6"/></svg>
+        <span>Idle</span>
+      </button>
+      <button class="pose" data-pose="guard" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8.3 7 10 4.2-1.7 7-5.4 7-10V6l-7-3Z"/></svg>
+        <span>Guard</span>
+      </button>
+      <button class="pose" data-pose="slash" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 19 3-3m2-2L19 4m-2-1 4 4M7 15l2 2"/></svg>
+        <span>Slash</span>
+      </button>
+      <span class="bar-rule" aria-hidden="true"></span>
+      <button class="pose reset" data-pose="reset" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+        <span>Reset Pose</span>
+      </button>
+    </nav>
+  </main>
+
+  <div id="viewer-loading">
+    <div class="loading-mark"></div>
+    <div class="loading-copy">AWAKENING THE WARRIOR</div>
+  </div>
+
+  <script type="module" src="/src/viewer/main.ts"></script>
+</body>
+</html>
