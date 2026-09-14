@@ -60,7 +60,9 @@ hitdetect,skinned}.ts` (rig.ts and ik.ts deleted), `src/core/debug.ts`, `src/gam
   resolution on the high and medium presets dropped the render scale to 60% (48% effective on
   medium) whenever a frame took over 20 ms, which pixelates the sharp dark fighters while fog hides
   it on the scenery. The floor is now 85%, the medium preset starts at 90%, and the controller only
-  steps down below ~45 fps and back up above ~62 fps.
+  steps down below ~45 fps and back up above ~62 fps. Verified with a close-up render at the
+  high preset and full scale: the outfit reads as solid navy panels with the cyan belt, no seam
+  speckle, clean silhouette edges, sword in the hand.
 - **Hits were frame-rate dependent.** The swept blade was rebuilt from two poses a frame apart; at
   1/20 s the second combo hit was lost and at 1/10 s nothing landed. Fixed by sampling the
   animation at a fixed rate while a window is pending (see Completed). Verified at 1/60 … 1/10.
@@ -161,21 +163,123 @@ feel pass.
 | `F1` / `F2` | Debug stats panel / hitbox overlay |
 | `Esc` | Settings |
 
+## NEXT_SESSION_PLAN (as written on 2026-09-05)
+
+Items 1 and 2 shipped in hour 4, below. Items 3–5 carry over to the plan at the end of this file.
+
+1. Multi-enemy V1 (2–3 orange enemies). 2. Nunchuck ally on the same pipeline in a live fight.
+3. Blade-path occlusion. 4. Feel pass on real hardware. 5. Remaining visual polish.
+
+---
+
+# Session report — Combat V1, hour 4 (2026-09-14)
+
+Branch `claude/echoes-shrine-game-ht9tl2`, PR #5. Items 1 and 2 of the plan above, started only
+now because the brief said not to until the 1v1 checklist had passed.
+
+## Completed
+
+- **The ring.** With two or three enemies on the player, only the enemy holding the attack token
+  closes inside its reach and swings; the others take flank slots ±50° either side of it as seen
+  from the player, a metre further out (2.8 m), so the whole ring stays inside the third-person
+  view. Slots are handed out left to right in the order the flankers already stand, so two never
+  swap sides through the holder; a flanker a long way from its slot walks around the ring, not
+  across it. The token passes when its holder dies, when a circling holder's time is up (2.4–3.8 s),
+  or from the holder itself at the end of its recover — never mid-swing, never twice in a second.
+  The next holder is the enemy the player is looking at unless another has waited far longer. The
+  holder keeps pressing until it is inside its own reach. A swing keeps the target it was
+  telegraphed at. Bodies resolve their overlap within the frame (three passes, capped at 0.5 m) so
+  no two ever stand in the same spot at any frame rate.
+- **Targets.** Every enemy fights a target: the ally's duel partner fights her, everyone else the
+  player; enemy blades cut whichever of the two is in the arc. The player token only ever passes
+  among enemies on the player, so the ally's partner is left to her unless it is the last one
+  standing.
+- **The ally on the skinned pipeline, in a live fight.** State machine follow → approach →
+  combatIdle → attack → recover, plus hit and downed. She picks the enemy that does not hold the
+  token (on her side of the player first, a grunt before the elite), keeps it while it qualifies,
+  rounds the player rather than crossing their line, flurries (the combo, or the spinning heavy one
+  time in four), steps back a little and closes again the moment it is her turn. Health 120 from
+  config: hurt cooldown 0.35 s, a hit during her own cut absorbed, otherwise a flinch; regen
+  8 HP/s after 2.5 s without a hit; a 6.5 m leash breaks off a duel that drifts; at zero health she
+  is down for 4 s (held death clip, a pulse on the outfit every 0.8 s, untargetable, out of the
+  separation), then rolls up facing the player at 60% health. Her sweeps only ever run against
+  enemies and the player's only against enemies: neither can damage the other, by construction.
+- **Respawn.** The shrine pulls the player back with every enemy reset to idle and its swing
+  abandoned with the window closed, and the ally re-summoned beside the player on her feet.
+- **Tooling.** `arena(hold, dist, place, enemies, ally)`, `fighters()`, `allyHealth()`,
+  `playerHealth()`, the token holder and the per-frame maximum of attackers on the player in
+  `stats()`, the token and the ally on the F1 panel; the arena clears the damage log.
+
+## Changed files
+
+`src/combat/{combat,config}.ts`, `src/core/debug.ts`, `src/gameplay/game.ts`, `README.md`,
+`SESSION_REPORT.md`, `DEVELOPMENT_LOG.md`, `docs/shots/combat-ring.jpg`,
+`docs/shots/combat-ring-top.jpg`, `docs/shots/combat-ally.jpg`.
+
+## Bugs fixed this session
+
+- **Slots piled up after a death:** `slotAngle` divided by the live count but never re-ranked the
+  indices, so with slots 0 and 2 of three alive both computed the same angle. Replaced by the
+  anchored flank slots.
+- **Two attackers at once:** the token could pass on its timer while the holder was mid-swing, and
+  (found by the design critique) the end-of-recover pass ran for *any* enemy finishing a recover,
+  not only the holder. Both closed.
+- **The holder rested out of reach:** the 0.6 m slot band let the token holder stand at 2.0–2.2 m,
+  outside its 1.9 m attack range, and never swing (a lone enemy hovered for 90 s in the first
+  multi-enemy run). The holder now presses until inside `attackRange × 0.92`.
+- **A 1/10 s frame straddled the slot band:** the last frame of a walk now lands on the slot.
+- **Five clustered bodies kept 6 cm of overlap** with single-pass separation (the encounter lab);
+  three passes.
+- **An enemy reset to idle by the respawn kept its swing's window open** under the idle state
+  (`openOnP` reached 2 in the encounter lab); the action is stopped and the window closed.
+- **The ally's stand-in behaviour** (999 HP, run to 2.1 m, combo on a timer, benched by the arena)
+  is gone.
+
+## Test results
+
+All logic tests run headless by stepping the game loop through `__ECHOES.simulate`; the scripted
+player faces the nearest enemy, steps in when out of reach, swings on a rhythm and dodges on the
+frame someone commits. The damage log is drained every 0.1 s by attack id, so every claim below
+is over the whole fight.
+
+| Lab | What it does | Result |
+| --- | --- | --- |
+| Multi-enemy | Two, then three enemies fanned in front of the player, no ally; steps 1/60, 1/20, 1/10 s. Asserts: never more than one enemy swinging at (or with a window open on) the player, from the director's per-frame count; no two bodies closer than their radii minus 3 cm; enemies holding a slot ≥ 35° apart and on the ring the design says (flankers within 12° of the holder's bearing ± 50° at 2.8 ± 0.6 m, the holder inside 2.5 m; a body off its slot for longer than 0.3 s fails); a token holder in reach swings within 4 s; no state held over 8 s; every enemy dies; every player-hit sample is a logged event; damage ∈ {12, 14} from enemies, {12, 14, 18, 28} from the player; no (attack id, target) pair twice; no NaN. | All six runs pass. Two enemies: both dead at 12.9 / 11.3 / 6.5 s (1/60, 1/20, 1/10); three enemies: all dead at 16.1 / 18.7 / 9.7 s. Attackers on the player at once: 1 in every run, windows open on the player at once: 1. Closest any two bodies came: 1.079–1.08 m against 1.08 m of radii, 0 overlaps. Slot-holders at least 45–52° apart; 0 / 83–110 samples off the ring geometry at 1/60 and 1/10, and at 1/20 s two or three samples (0.1 s, the frame of a token pass). The holder never circled in reach longer than 1.5 s; the longest hold was 7.3 s (the last enemy standing, with nobody to pass to). No stuck states, no duplicate pairs, no NaN; every player-hit sample matched a logged event. |
+| Ally | Two enemies and the ally; the run continues 4.5 s past the last death. Asserts: no A→P or P→A event ever; she lands hits (8 / 14) and takes them (12 / 14); every drop in her health and the player's is a logged event; with two enemies standing she is never on the token holder (0 samples); never more than one enemy on her; she regenerates; a partner in reach is struck within 3.5 s; never stuck; the fight clears. Then her health set to 10 with the player only dodging. | Pass at 1/60 and 1/20 s: 0 events between her and the player either way over 64 / 48 samples; she landed 2 hits and took 2 / 1 (all values from the config), every drop in either health a logged event; on the token holder in 0 samples; at most one enemy on her; health regenerated after the lull; longest wait in reach 1.3 s; the fight cleared at 7.5 / 5.0 s. Downed path: down at 2.5 s, neither targeted nor hit while down, up 4.0 s later on 72 HP, re-engaged. |
+| Encounter path | The real route: encounter 1 from idle spawns with the ally stepping out of the trees, a 4 s walk toward the shrine with the ally in tow, encounter 2 with the elite where her health and the player's are set to 1 (she goes down, the player is hit and respawns, every enemy back in idle with no swing live, the ally beside the player at 120), then the fight cleared. | Pass. Encounter 1 cleared at 9.7 s with the ally landing 2 hits, 0 events between her and the player, one attacker on the player at a time, no overlaps. The walk: 12.8 m in 4 s with her 2.1 m behind in `follow`. Encounter 2: she is down at 4.6 s; the player is hit and respawns at 4.8 s at the encounter's edge (0.3, 22.6) with all three enemies in `idle`, none attacking, and her beside the player (2.9 m) on 120 HP and already choosing a target; the fight then clears at 18 s (218 dealt by the player, 28 by her, 240 needed), the elite's hit on the player 16, the blades' 12 / 12 / 12, no overlaps, 0 events between her and the player. |
+| AI duel, hit, wall, movement, slope | The previous session's labs, unchanged (the duel lab gained exit codes). | Duel: enemy dead at 4.9 s at both steps, 12/28/12/13 dealt, one hit taken, no attacks after death. Hit lab identical to the previous session at every distance and step. Wall lab identical (0/0/0/0 through the pillar, 12/14/18/21 open, the thin-post coin flip unchanged). Slope lab identical. Movement lab: run-in swing 12, turning swing 12, back-turned 0 at both steps; the strafe row now takes 12/12/12 and 14/14/12 with ≥ 2.1 s between hits (was 12/14 and 12) because the holder now presses inside its reach instead of resting at 2.2 m. |
+
+Plates from the production build with the render scale pinned: the ring from the gameplay camera
+(holder committing in front, a flanker to the left, the ally's duel behind) and from 8 m above with
+the F2 capsules; the ally mid-flurry square-on. Taken with the loop released for the frames of each
+screenshot: a paused loop leaves the fog and post-processing on their first frame, which put a
+band across the horizon of the first set.
+
+## Remaining bugs and known limitations
+
+- **P2 — thin posts are a coin flip** and **P2 — enemies are tested at last frame's positions**:
+  unchanged from the previous session.
+- **P3 — an encounter's enemies can spawn outside their alert radius.** The trigger zone is 15 m
+  and the alert radius 14 m, so a player who stops at the edge of a zone sees the banner and the
+  spawn puffs and then nothing until they walk in. Pre-existing; not changed.
+- **P3 — the downed pose is the enemies' death clip.** A held frame at ~55% of the track (on one
+  knee) would read better than prone; needs a `holdAt` on the clip table and a look at the track.
+- **Not measured:** frame time on real hardware (SwiftShader only). Draw calls in the 3v1 + ally
+  courtyard fight: 3,435 at the high preset (3,145 in last session's 1v1). Production bundle:
+  `index` 251.1 kB (79.7 kB gzip, was 242.9 / 76.8), the PlayCanvas chunk unchanged. The ring and
+  the ally add no per-frame allocation beyond the token pass's sort; the slot assignment is a
+  handful of `atan2` calls per enemy per frame.
+
 ## NEXT_SESSION_PLAN
 
-1. **Multi-enemy V1 (2–3 orange enemies):** the attack token and ring slots already exist; add a
-   second and third enemy to the courtyard encounter, tune `holdRange` / slot spacing so the ring
-   reads, and extend the duel lab to assert one attacker at a time and no overlapping bodies.
-2. **Nunchuck ally on the same pipeline in a live fight:** give the ally the Follow → CombatIdle →
-   ApproachTarget → Attack → Recover → Hit machine, make it pick the enemy the player is not
-   fighting, and prove it never damages the player (its sweeps target only enemies; add the
-   assertion to the lab).
-3. **Blade-path occlusion:** sweep the blade chain itself against colliders so a thin post between
-   fighters blocks the cut wherever the contact would fall, and add the wall lab's post case as a
-   hard assertion.
-4. **Feel pass on real hardware:** measure frame time on a GPU, then tune hit-stop (the brief's
-   30–45 / 50–75 ms bands), spark size, impact sound layering and the camera impulse against the
-   fight capture; add an attack telegraph flash on the enemy's wind-up.
-5. **Remaining visual polish:** foot planting on slopes for the skinned bodies (IK on the ankle
-   only), the enemy's hood clipping at the shoulders in the recoil, and new README plates from the
-   gameplay camera replacing the procedural-character shots.
+1. **Blade-path occlusion:** sweep the blade chain itself against colliders so a thin post between
+   fighters blocks the cut wherever the contact would fall; make the wall lab's post case a hard
+   assertion.
+2. **Feel pass on real hardware:** frame time on a GPU, then hit-stop, spark size, impact sound
+   layering and the camera impulse against the fight capture; an attack telegraph flash on the
+   wind-up.
+3. **The ally's downed pose** held at a kneel (`holdAt` on the clip def) and an ally health bar
+   beside the player's instead of toasts.
+4. **Remaining visual polish:** foot planting on slopes (ankle IK only), the enemy's hood clipping
+   at the shoulders in the recoil; a fight GIF of the ring for the README when the capture harness
+   can afford it.

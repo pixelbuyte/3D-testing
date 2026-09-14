@@ -205,3 +205,100 @@ landing 0, the lunging third and the heavy connecting — the light attacks' hon
 ≈2.0 m from body centre (the wall lab's open-ground control at 2.05 m still lands 12 / 14 / 18 /
 21). Identical at 1/60, 1/30, 1/20 and 1/10 s; no attack id damages the same target twice;
 through the lantern pillar still 0 / 0 / 0 / 0. PR #3 merged; this goes out as a fresh PR.
+
+**20:36 addendum — verified.** Close-up of the player at the high preset with the render scale
+pinned to 100%: solid navy panels, cyan belt, no seam speckle, clean silhouette edges, sword in
+the hand; the ally behind reads as clean black. PRs #3 and #4 merged; the branch is back on main.
+
+# Development log — Combat V1, hour 4 (2026-09-14)
+
+Branch `claude/echoes-shrine-game-ht9tl2`, PR #5 (opened for the atlas verification note, now
+carrying this work). Items 1 and 2 of the last session's plan: two to three enemies with spacing,
+and the nunchuck ally on the skinned pipeline in a live fight. Per the brief these waited until
+the 1v1 checklist had passed; it had, at the end of the last session.
+
+## 17:00 UTC — design, and a critique before writing code
+
+**Read.** The whole combat layer as it stands: `combat.ts`, `actor.ts`, `config.ts`,
+`skinned.ts`, the hooks and the labs. Three things already there mattered: the attack token,
+the ring slots, and the fact that the ally's sweeps only ever run against enemies.
+
+**Found before writing anything.** Three defects in the existing ring. `slotAngle` divided by
+the live count but never re-ranked the slot indices, so once one of three enemies died the two
+survivors (slots 0 and 2) computed the same angle and piled onto one spot. The token could pass
+on its timer while the holder was mid-swing, so a second enemy in range could start a swing
+before the first finished. And the ring was an absolute angle with a constant drift, so flankers
+regularly ended up behind the third-person camera.
+
+**Designed.** Each enemy resolves a target every frame — the ally's duel partner fights her,
+everyone else the player. The token holder closes straight in; the others take flank slots
+either side of it *as seen from the player*, so the whole ring stays inside the camera's view.
+The ally gets a real machine (follow, approach, combatIdle, attack, recover, hit, downed) and
+picks the enemy that does not hold the token. The design went to three independent reviewers
+(state machines, how it reads on screen, whether the claims can be proven) before a line was
+written. The notable returns, all adopted: the end-of-recover token pass ran for *any* enemy
+finishing a recover, not only the holder — with the ally's partner cycling attack→recover every
+two seconds it would have stripped the token from a holder mid-swing (two attackers); the token
+could pass twice within a second (timer during recover, then end of recover); ±130° / 180° slots
+would have parked an enemy inside the camera; 65° spacing put the far flanker off screen two
+thirds of the time (now 50°); greedy slot assignment could swap two flankers through the holder
+(now ordered left to right, and a long walk goes *around* the ring); the ally's recover step-back
+walked her duel away from the player at ~0.2 m/s (shorter step, tighter re-close, a 6.5 m leash);
+"downed" on a held death clip for 6 s at full-health revival read as dead then resurrected (4 s,
+a pulse on the outfit, up at 60% facing the player); and the damage log is a 64-entry window, so
+a lab reading it once at the end of a long fight proves nothing (the arena clears it, the labs
+drain it every sample by attack id).
+
+## 17:30 UTC — built
+
+**The ring** (`assignRing`, `steerToSlot`, `passToken`, `resolveTargets` in `combat.ts`).
+Holder at `attackRange × 0.85`; flankers at `holdRange` 2.8 m, ±50° from the holder's bearing,
+handed out in the order the flankers already stand; the last frame of a walk lands on the slot
+exactly (a 1/10 s frame used to straddle the stop band). The holder keeps pressing until it is
+inside its own reach — the old 0.6 m band let it rest a hand's breadth out of range and never
+swing, which the first multi-enemy run caught (a lone enemy hovering at 1.9–2.2 m for 90 s). The
+token passes when its holder dies, when a circling holder's time is up, or from the holder itself
+at the end of its recover; never mid-swing. The next holder is the enemy the player is looking at
+unless another has waited far longer. A swing keeps the target it was telegraphed at through the
+cut and the step back. Bodies resolve their overlap within the frame (three passes, capped) rather
+than at a rate.
+
+**The ally** (`updateAlly`, `chooseAllyTarget`, `hurtAlly`, `followPlayer`, `summonAlly`).
+`maxHealth` from config (120; the 999 stand-in is gone). She prefers a partner on her own side of
+the player and a grunt over the elite, rounds the player when the straight path would cross their
+line, flurries (combo, or the spinning heavy one time in four), steps back a little, closes again
+the moment it is her turn and she is a hand short. Enemy blades cut whichever of player and ally
+is in the arc; her hurt cooldown is 0.35 s, a hit during her own cut is absorbed like the enemies'
+rule, otherwise a flinch; regen 8 HP/s after 2.5 s without a hit; at zero health the held death
+clip for 4 s with a pulse every 0.8 s, untargetable and not in the separation, then a dodge roll
+(a held clip only ends when another action takes over) up at 60% health, facing the player. The
+respawn re-summons her beside the player and closes any enemy swing it abandons.
+
+**Tooling.** `arena(hold, dist, place, enemies, ally)` fans one to three enemies across the
+player's front and puts her at the player's side; `fighters()` reports every body with team or
+kind, state, position, radius, whether it is walking, and whom it is on; `stats()` carries the
+token holder, the ally's state and target, and the per-frame maximum of enemies swinging at /
+with a window open on the player since the last arena; `allyHealth()` and `playerHealth()` set
+health to force the downed and respawn paths; the F1 panel shows the token and the ally.
+
+## 19:40 UTC — tested
+
+New labs (`multilab`, `allylab`, `enclab` in the scratchpad, on the shared harness `labcommon`
+whose scripted player faces the nearest enemy, steps in, swings on a rhythm and dodges on the
+frame someone commits), plus the old set. First multi-enemy run: the ring held but the player
+never killed the last enemy — the lab's player did not turn to face it, and the holder's dead band
+(above) — both fixed. Second run: the "spacing" assertion flagged 3° between two `combatIdle`
+enemies — one was walking to a new slot after a token pass (`combatIdle` steers too), so
+`fighters()` gained `moving` and the check counts only bodies holding a slot. The encounter lab
+then found single-pass separation leaving 6 cm between five clustered bodies (now three passes),
+that an enemy reset to idle by the respawn kept its swing's damage window open (closed with the
+action), and that eight seconds of walking toward the shrine entered its trigger early (a lab
+fix). Results in `SESSION_REPORT.md`.
+
+**Plates.** Captured from the production build with the render scale pinned: the ring from the
+gameplay camera and from 8 m above with the F2 capsules, the holder committing while a flanker
+holds, and the ally mid-flurry square-on. The first set had a translucent band across the horizon
+and a heavy haze from above; it was the capture, not the game — `pause(true)` stops the whole
+`Game.update`, so the fog, water and post-processing never advanced past their first frame. The
+plates are taken with the loop released for the frames of each screenshot (the fight moves about
+0.1 s per rendered frame on this software renderer), and the band is gone.

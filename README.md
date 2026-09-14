@@ -157,7 +157,7 @@ public/assets/ packed runtime assets (textures, models, HDRI)
 ## Combat
 
 The shrine is worth defending, so a small amount of real-time melee sits on top of the exploration.
-The scope is fixed on purpose: **one player, one ally, three staged encounters of two to four
+The scope is fixed on purpose: **one player, one ally, three staged encounters of two to three
 enemies**. There are no levels, no loot, no skill trees — the effort went into how a swing feels.
 
 <p align="center">
@@ -215,20 +215,54 @@ on.
 → combatIdle`, plus `hit`, `stagger` and `dying`. An enemy notices you inside the alert radius,
 closes to attack range, faces you, waits out its cooldown, swings, steps back, and repeats. A light
 hit interrupts a wind-up half the time, is a short flinch outside a swing, and is absorbed during
-the cut itself; a heavy always staggers. Waiting enemies hold ring slots with hysteresis, and
-**only one enemy holds the attack token at a time**. A dead enemy never attacks: death clears the
-window and the token on the frame it happens.
+the cut itself; a heavy always staggers. A dead enemy never attacks: death clears the window and
+the token on the frame it happens.
+
+<p align="center">
+  <img src="docs/shots/combat-ring.jpg" width="49%" alt="Three enemies on the ring from the gameplay camera: the token holder committing in front, a flanker to the left, the ally's duel behind">
+  <img src="docs/shots/combat-ring-top.jpg" width="49%" alt="The same ring from above with the F2 overlay: the holder inside its reach, the flankers out at hold range either side of it, the ally on her own enemy">
+</p>
+
+**The ring.** With two or three enemies on you, **only one holds the attack token at a time** and
+is allowed to close inside its reach and swing; the others take flank slots 50° either side of it
+as seen from you, a metre further out, so the whole ring stays inside the third-person view
+instead of drifting round behind the camera. The token moves on when its holder has swung and
+stepped back (never in the middle of a cut, so two enemies can never be swinging at you at once),
+or when a holder has been circling too long; the next holder is the enemy you are looking at, so
+the telegraph plays on screen, unless another has waited far longer. Flankers keep the slot they
+already stand on, and one that has a long way to go walks *around* the ring rather than across it
+through the fight. Bodies push apart within the frame, so nobody ever stands inside anybody else.
+
+**The ally** fights the enemy you are not fighting. Her mind is `follow → approach → combatIdle →
+attack → recover`, plus `hit` and `downed`: she picks the enemy that does not hold the token
+(preferring one on her side of you, and a grunt over the elite, which is your problem), rounds you
+rather than crossing your line to reach it, trades flurries with it — the three-strike combo, the
+spinning heavy one time in four — and that enemy fights her back with a real blade: she takes damage,
+flinches outside her own cuts, regenerates after a lull, breaks off a duel that has drifted more
+than 6.5 m from you, and at zero health goes down for four seconds, pulsing so she reads as down
+rather than dead, then rolls back up facing you on 60% health. When only the token holder is left
+she joins you on it. Her sweeps only ever run against enemies and yours only against enemies, so
+neither of you can damage the other, by construction; an enemy blade cuts whichever of you is in
+its arc.
+
+<p align="center">
+  <img src="docs/shots/combat-ally.jpg" width="98%" alt="The ally mid-flurry on her own enemy, seen square-on from the side">
+</p>
 
 **Encounters** are staged along the existing route — two at the outer gate to teach the loop, three
-in the courtyard where the ally arrives, and the elite at the awakened shrine. The camera swings out
-to a third-person boom when a fight starts and eases back to first person when it clears.
+in the courtyard where the ally arrives, and the elite with two blades at the awakened shrine. The
+camera swings out to a third-person boom when a fight starts and eases back to first person when it
+clears. If you fall, the shrine pulls you back to the edge of the fight with the enemies reset and
+the ally back on her feet beside you.
 
 **Debug and testing.** `F1` shows a stats panel (frame time, draw calls, action, lock, window,
-i-frames, enemy states); `F2` draws the hurt capsules, every sweep chain (green while dangerous,
-red on the frame it connects) and the contact points. Both are off in normal play. The
-`window.__ECHOES` hooks (`arena`, `simulate`, `attack`, `setYaw`, `trace`, `enemyHealth`) let a
-headless script stage a 1v1 and step it at any frame time without rendering; the hit, duel,
-movement, wall and slope labs in the development log run on them.
+i-frames, the token holder, the ally's state and target, enemy states); `F2` draws the hurt
+capsules, every sweep chain (green while dangerous, red on the frame it connects) and the contact
+points. Both are off in normal play. The `window.__ECHOES` hooks (`arena` with an enemy count and
+an ally flag, `fighters`, `simulate`, `attack`, `setYaw`, `trace`, `hits`, `enemyHealth`,
+`allyHealth`, `playerHealth`, `encounter`) let a headless script stage a fight and step it at any
+frame time without rendering; the hit, duel, multi-enemy, ally, encounter, movement, wall and slope
+labs in the development log run on them.
 
 ---
 

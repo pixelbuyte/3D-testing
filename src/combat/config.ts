@@ -20,8 +20,14 @@ export const COMBAT = {
     damage: { enemyAttack: 12, enemyAttack2: 14, enemyHeavy: 18 } as Record<string, number>,
     /** how close the enemy wants to be before it commits to a swing */
     attackRange: 1.9,
-    /** where it stands while waiting for its turn */
-    holdRange: 2.6,
+    /** where the others stand while one has the attack token: a clear layer outside its reach */
+    holdRange: 2.8,
+    /**
+     * flank slots sit this many degrees either side of the enemy holding the token, as seen from
+     * the player. At 50° the far flanker is still on screen when the player turns to face the
+     * near one; at 65° it dropped out of the third-person view two thirds of the time.
+     */
+    ringSpacingDeg: 50,
     /** seconds between attacks, plus a random spread */
     cooldown: 1.4,
     cooldownSpread: 0.8,
@@ -33,6 +39,26 @@ export const COMBAT = {
   ally: {
     maxHealth: 120,
     damage: { nunCombo: 8, nunFlourish: 14 } as Record<string, number>,
+    /** the nunchucks are short: she commits closer than the swordsmen do */
+    attackRange: 1.8,
+    /** she closes again once her partner has stepped this far away (a wider band let the duel drift off) */
+    reengageRange: 2.3,
+    cooldown: 1.1,
+    cooldownSpread: 0.7,
+    /** chance a flurry is the spinning heavy instead of the combo */
+    flourishChance: 0.25,
+    /** seconds after taking a hit during which she cannot be hit again */
+    hurtCooldown: 0.35,
+    /** health returns at this rate once she has gone this long without a hit */
+    regenRate: 8,
+    regenDelay: 2.5,
+    /** at zero health she goes down for this long, then gets back up with this much of her health */
+    downedTime: 4,
+    upHealth: 0.6,
+    /** she breaks off a duel that has drifted further than this from the player, so the fight stays in frame */
+    leash: 6.5,
+    /** how far off the player's shoulder she walks when nothing is happening */
+    followDistance: 2.6,
   },
   blade: {
     /**

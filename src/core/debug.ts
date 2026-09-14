@@ -12,9 +12,22 @@ export interface DebugHooks {
   attack?: (kind: string) => boolean;
   /** tooling: advance the fight without rendering, optionally at a chosen step size */
   simulate?: (seconds: number, step?: number, move?: { x: number; z: number; sprint?: boolean }) => void;
-  enemyHealth?: () => { id: number; hp: number; state: string }[];
-  /** tooling: a 1v1 on flat stone; hold=true freezes the enemy for hit-detection tests */
-  arena?: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => void;
+  enemyHealth?: () => { id: number; hp: number; state: string; target: string }[];
+  /** tooling: read the ally's health, or set it (to drive her down in a lab) */
+  allyHealth?: (hp?: number) => number;
+  /** tooling: read the player's health, or set it (to force the respawn in a lab) */
+  playerHealth?: (hp?: number) => number;
+  /**
+   * tooling: every body on its feet — player 'P', ally 'A', enemies 'eN' (dissolving bodies are
+   * gone) — with its team ('player', 'ally', or the enemy kind), state, position, separation radius
+   * and whom it is on: for the player that is the enemy holding the attack token
+   */
+  fighters?: () => { id: string; team: string; hp: number; state: string; x: number; z: number; r: number; target: string; moving: boolean }[];
+  /**
+   * tooling: a fight on flat stone. hold=true freezes the enemies for hit-detection tests; `enemies`
+   * (1–3) fans that many across the player's front at `dist`; `ally` puts her at the player's side
+   */
+  arena?: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }, enemies?: number, ally?: boolean) => void;
   /** tooling: turn the player to an absolute yaw in degrees */
   setYaw?: (deg: number) => void;
   /** tooling: the F2 hitbox overlay */
