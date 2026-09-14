@@ -81,7 +81,9 @@ export class Game {
       trace: (on: boolean) => { if (on) this.combat.trace = []; const t = this.combat.trace; if (!on) this.combat.trace = null; return t ?? []; },
       previewOff: () => this.combat.previewOff(),
       enemyHealth: () => this.combat.debugEnemyHealth(),
-      arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }) => this.combat.forceDuel(hold, dist, place),
+      fighters: () => this.combat.debugFighters(),
+      allyHealth: (hp?: number) => this.combat.debugAllyHealth(hp),
+      arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }, enemies?: number, ally?: boolean) => this.combat.forceDuel(hold, dist, place, enemies, ally),
       setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },
       pause: (on: boolean) => { this.paused = on; },
@@ -187,8 +189,9 @@ export class Game {
         `player hp ${st.health}  act ${st.act}  lock ${st.lock}  iframes ${st.iframes}`,
         `attack #${st.attackId}  frames ${String(st.phase).toUpperCase()}  window ${st.hitOpen ? 'OPEN' : 'closed'}`,
         `hits ${st.hits || '-'}`,
-        `enemies ${st.enemies}  nearest ${st.nearest}  combo ${st.combo}`,
+        `enemies ${st.enemies}  nearest ${st.nearest}  combo ${st.combo}  token ${st.token}`,
         `foes ${st.foes}`,
+        `ally ${st.ally}  on ${st.allyTarget}`,
         `F1 panel  F2 hitboxes`,
       ].join('\n'));
     }
