@@ -83,6 +83,7 @@ export class Game {
       enemyHealth: () => this.combat.debugEnemyHealth(),
       fighters: () => this.combat.debugFighters(),
       allyHealth: (hp?: number) => this.combat.debugAllyHealth(hp),
+      playerHealth: (hp?: number) => this.combat.debugPlayerHealth(hp),
       arena: (hold?: boolean, dist?: number, place?: { x: number; z: number; yaw: number; ex: number; ez: number }, enemies?: number, ally?: boolean) => this.combat.forceDuel(hold, dist, place, enemies, ally),
       setYaw: (deg: number) => this.player.setYaw(deg * Math.PI / 180),
       freeCam: (on) => { this.freeCam = on; this.player.enabled = !on; },

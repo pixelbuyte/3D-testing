@@ -54,6 +54,10 @@ interface Enemy {
   /** where on the ring around its target it wants to stand this frame: bearing and radius */
   ringAng: number;
   ringDist: number;
+  /** bearing relative to the ring's anchor, for ordering the flankers left to right */
+  ringRel: number;
+  /** when it last received the attack token, so the wait is shared out */
+  tokenAt: number;
   dieT: number;
   encounter: number;
 }
@@ -106,8 +110,11 @@ export class CombatDirector {
   /** only the enemy holding this may close and strike the player; everyone else flanks */
   private attackToken: Enemy | null = null;
   private tokenTimer = 0;
-  private ringCand = [0, 0, 0, 0, 0];
-  private ringTaken = [false, false, false, false, false];
+  private flankList: Enemy[] = [];
+  private allyPulse = 0;
+  /** the most enemies seen swinging at / with a window open on the player in one frame since the last arena — the labs' invariant */
+  private maxAttackersOnP = 0;
+  private maxOpenOnP = 0;
   private taughtControls = false;
   private playerHealth: number = COMBAT.player.maxHealth;
   private playerHurtCd = 0;
@@ -389,10 +396,12 @@ export class CombatDirector {
   private updateEnemies(dt: number): void {
     this.tokenTimer -= dt;
     this.resolveTargets();
-    // the token moves on when its holder dies or its time is up — but never in the middle of a swing,
-    // or the next enemy could start its own before this one has finished: two attackers at once
+    // the token moves on when its holder dies, or when its time is up while the holder is still only
+    // circling; a holder that has committed keeps it through the swing and the step back, and hands
+    // it on itself at the end of the recover, so no two enemies are ever swinging at the player
     const tok = this.attackToken;
-    if (!tok || tok.actor.dead || tok.state === 'dying' || (this.tokenTimer <= 0 && tok.state !== 'attack')) { this.passToken(); this.resolveTargets(); }
+    const circling = !tok || tok.state === 'idle' || tok.state === 'alert' || tok.state === 'approach' || tok.state === 'combatIdle';
+    if (!tok || tok.actor.dead || tok.state === 'dying' || (this.tokenTimer <= 0 && circling)) { this.passToken(); this.resolveTargets(); }
     this.assignRing();
     for (const e of this.enemies) {
       const a = e.actor;
@@ -427,7 +436,7 @@ export class CombatDirector {
         // close to a slot on the ring around the target; the token holder's ring is inside reach
         case 'approach': {
           a.face(target.pos.x, target.pos.z);
-          const arrived = this.steerToSlot(e, a, target, d, mine);
+          const arrived = this.steerToSlot(e, a, target, d, mine, dt);
           if (arrived) { e.state = 'combatIdle'; e.timer = 0; }
           break;
         }
@@ -435,7 +444,7 @@ export class CombatDirector {
         // at range: hold the slot, face the target, wait for the token, the cooldown and reach
         case 'combatIdle': {
           a.face(target.pos.x, target.pos.z);
-          const arrived = this.steerToSlot(e, a, target, d, mine);
+          const arrived = this.steerToSlot(e, a, target, d, mine, dt);
           if (!arrived && d > COMBAT.enemy.holdRange * 1.6) { e.state = 'approach'; break; }
           if (mine && e.cooldown <= 0 && d < COMBAT.enemy.attackRange && !a.busy) {
             const clip = this.rand() < 0.35 ? C.ENEMY_ATTACK_2 : C.ENEMY_ATTACK;
@@ -464,7 +473,7 @@ export class CombatDirector {
           const bx = a.pos.x - target.pos.x, bz = a.pos.z - target.pos.z, bl = Math.hypot(bx, bz) || 1;
           a.vel.set((bx / bl) * 1.9, 0, (bz / bl) * 1.9);
           a.face(target.pos.x, target.pos.z);
-          if (e.timer <= 0) { e.state = 'combatIdle'; this.passToken(); }
+          if (e.timer <= 0) { e.state = 'combatIdle'; if (this.attackToken === e) this.passToken(); }
           break;
         }
 
@@ -491,6 +500,15 @@ export class CombatDirector {
       this.sweepAttack(a, this.friendlyTargets(), (t, at) => t === this.player ? this.hurtPlayer(a, at) : this.hurtAlly(a, at));
     }
 
+    let attackers = 0, open = 0;
+    for (const e of this.enemies) {
+      if (e.actor.dead || e.target !== this.player) continue;
+      if (e.state === 'attack') attackers++;
+      if (e.actor.hitOpen) open++;
+    }
+    if (attackers > this.maxAttackersOnP) this.maxAttackersOnP = attackers;
+    if (open > this.maxOpenOnP) this.maxOpenOnP = open;
+
     // reap fully dissolved enemies
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -511,7 +529,21 @@ export class CombatDirector {
    * Move toward this enemy's slot on the ring around its target. Returns true once it is there.
    * The stop/start band is asymmetric so an enemy holding its slot does not shiver at the edge.
    */
-  private steerToSlot(e: Enemy, a: Actor, target: Actor, d: number, closeIn: boolean): boolean {
+  private steerToSlot(e: Enemy, a: Actor, target: Actor, d: number, closeIn: boolean, dt: number): boolean {
+    const cur = this.bearingFrom(target, a);
+    const err = wrapAngle(e.ringAng - cur);
+    if (!closeIn && Math.abs(err) > 30 * DEG && d < e.ringDist + 1.2 && d > 0.3) {
+      // a long way round the ring: walk around the target, not across it through the one attacking
+      const s = err > 0 ? 1 : -1;
+      const radial = Math.max(-1, Math.min(1, (e.ringDist - d) * 1.5));
+      const vx = Math.cos(cur) * s + Math.sin(cur) * radial;
+      const vz = -Math.sin(cur) * s + Math.cos(cur) * radial;
+      const vl = Math.hypot(vx, vz) || 1;
+      const sp = a.runSpeed * 0.62;
+      a.vel.set((vx / vl) * sp, 0, (vz / vl) * sp);
+      e.moving = true;
+      return false;
+    }
     const wantX = target.pos.x + Math.sin(e.ringAng) * e.ringDist;
     const wantZ = target.pos.z + Math.cos(e.ringAng) * e.ringDist;
     const dx = wantX - a.pos.x, dz = wantZ - a.pos.z;
@@ -522,17 +554,31 @@ export class CombatDirector {
     else if (e.moving ? dl < 0.25 : dl > 0.6) e.moving = !e.moving;
     if (e.moving) {
       const sp = a.runSpeed * (d < 5 ? 0.62 : 1);
-      a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp);
+      if (dl <= sp * dt) {
+        // the last frame of the walk lands on the slot exactly: a long frame must not overshoot the
+        // stop band and leave the body pacing back and forth across it
+        a.vel.set(dx / dt, 0, dz / dt);
+        e.moving = false;
+      } else {
+        a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp);
+      }
     } else {
       a.vel.set(0, 0, 0);
     }
     return !e.moving;
   }
 
-  /** Who each enemy fights this frame: the ally's duel partner fights her, everyone else the player. */
+  /**
+   * Who each enemy fights this frame: the ally's duel partner fights her, everyone else the player.
+   * A swing that has started keeps its target through the cut and the step back, so a blade that was
+   * telegraphed at one body is not turned onto the other halfway through.
+   */
   private resolveTargets(): void {
     const allyUp = this.allySpawned && this.allyState !== 'downed';
-    for (const e of this.enemies) e.target = allyUp && this.allyTarget === e && this.attackToken !== e ? this.ally : this.player;
+    for (const e of this.enemies) {
+      if (e.state === 'attack' || e.state === 'recover') continue;
+      e.target = allyUp && this.allyTarget === e && this.attackToken !== e ? this.ally : this.player;
+    }
   }
 
   /** Bearing of `a` as seen from `from`, in the ring's convention (x = sin, z = cos). */
@@ -544,18 +590,19 @@ export class CombatDirector {
    * Where every enemy should stand this frame.
    *
    * The token holder closes straight in on its own bearing. The others take flank slots either side
-   * of it as seen from the player — ±65°, then ±130°, then behind — so the whole ring stays inside
-   * the third-person camera's view instead of drifting round behind it. Each flanker keeps the free
-   * slot nearest where it already stands, so a death or a token pass moves only whoever has to
-   * move. An enemy on the ally simply closes in on her.
+   * of it as seen from the player, so the whole ring stays inside the third-person camera's view
+   * instead of drifting round behind it. Flankers are ordered left to right by where they already
+   * stand and the slots handed out in the same order, so two of them never swap sides through the
+   * holder; a third (no encounter fields one) takes the outer slot on the side the camera looks.
+   * An enemy on the ally simply closes in on her.
    */
   private assignRing(): void {
     const P = this.player, tok = this.attackToken;
-    const anchor = tok && !tok.actor.dead && tok.state !== 'dying' ? this.bearingFrom(P, tok.actor) : this.controller.yaw + Math.PI;
+    const fwd = this.controller.yaw + Math.PI;
+    const anchor = tok && !tok.actor.dead && tok.state !== 'dying' ? this.bearingFrom(P, tok.actor) : fwd;
     const sp = COMBAT.enemy.ringSpacingDeg * DEG;
-    const cand = this.ringCand, taken = this.ringTaken;
-    cand[0] = anchor + sp; cand[1] = anchor - sp; cand[2] = anchor + 2 * sp; cand[3] = anchor - 2 * sp; cand[4] = anchor + Math.PI;
-    taken.fill(false);
+    const flank = this.flankList;
+    flank.length = 0;
     for (const e of this.enemies) {
       if (e.actor.dead || e.state === 'dying') continue;
       if (e === tok || e.target === this.ally) {
@@ -563,17 +610,16 @@ export class CombatDirector {
         e.ringDist = COMBAT.enemy.attackRange * 0.85;
         continue;
       }
-      const b = this.bearingFrom(P, e.actor);
-      let best = -1, bd = Infinity;
-      for (let i = 0; i < cand.length; i++) {
-        if (taken[i]) continue;
-        const dd = Math.abs(wrapAngle(cand[i] - b));
-        if (dd < bd) { bd = dd; best = i; }
-      }
-      if (best >= 0) taken[best] = true;
-      e.ringAng = best >= 0 ? cand[best] : b;
+      e.ringRel = wrapAngle(this.bearingFrom(P, e.actor) - anchor);
       e.ringDist = COMBAT.enemy.holdRange;
+      flank.push(e);
     }
+    if (!flank.length) return;
+    if (flank.length === 1) { flank[0].ringAng = anchor + (flank[0].ringRel < 0 ? -sp : sp); return; }
+    flank.sort((a, b) => a.ringRel - b.ringRel);
+    const outerLeft = Math.abs(wrapAngle(anchor - 2 * sp - fwd)) < Math.abs(wrapAngle(anchor + 2 * sp - fwd));
+    const slots = flank.length === 2 ? [-sp, sp] : outerLeft ? [-2 * sp, -sp, sp] : [-sp, sp, 2 * sp];
+    for (let i = 0; i < flank.length; i++) flank[i].ringAng = anchor + slots[Math.min(i, slots.length - 1)];
   }
 
   /**
@@ -589,28 +635,39 @@ export class CombatDirector {
     const allyUp = this.allySpawned && this.allyState !== 'downed';
     const free = allyUp ? live.filter((e) => e !== this.allyTarget) : live;
     const pool = free.length ? free : live;
+    // the elite leads; otherwise the one the player is looking at, so the telegraph plays on screen
+    // — unless another has waited much longer for its turn
+    const fwd = this.controller.yaw + Math.PI;
+    const off = (e: Enemy): number => Math.abs(wrapAngle(this.bearingFrom(this.player, e.actor) - fwd));
     pool.sort((a, b) => {
       const ea = a.kind === 'elite' ? -1 : 0, eb = b.kind === 'elite' ? -1 : 0;
       if (ea !== eb) return ea - eb;
-      return a.actor.distanceTo(this.player) - b.actor.distanceTo(this.player);
+      const oa = off(a), ob = off(b);
+      if (Math.abs(oa - ob) > 30 * DEG) return oa - ob;
+      return a.tokenAt - b.tokenAt;
     });
     // don't hand it straight back to whoever just used it, when there is anyone else
     const next = pool.find((e) => e !== this.attackToken) ?? pool[0];
     this.attackToken = next;
+    next.tokenAt = this.time;
     this.tokenTimer = 2.4 + this.rand() * 1.4;
   }
 
   // ---------------------------------------------------------------- ally
+
+  /** Back to her feet and her own mind, wherever she was: a held death frame only ends when another action takes over. */
+  private standAlly(): void {
+    if (this.allyState === 'downed') this.ally.act(C.DODGE, 0.8, 0.25);
+    this.allyState = 'follow';
+    this.allyTarget = null;
+  }
 
   /** Put the ally into the fight at (x, z): the encounter that brings her in, and the arena. */
   private summonAlly(x: number, z: number, yawDeg: number): void {
     this.allySpawned = true;
     this.ally.root.enabled = true;
     this.ally.health = this.ally.maxHealth;
-    // a held death frame only ends when another action takes over
-    if (this.allyState === 'downed') this.ally.act(C.DODGE, 0.8, 0.25);
-    this.allyState = 'follow';
-    this.allyTarget = null;
+    this.standAlly();
     this.allyTimer = 0;
     this.allyCd = 0.5;
     this.allyHurtCd = 0;
@@ -634,9 +691,14 @@ export class CombatDirector {
 
     if (this.allyState === 'downed') {
       a.vel.set(0, 0, 0);
+      // a pulse on the accent every so often: down, not dead
+      this.allyPulse -= dt;
+      if (this.allyPulse <= 0) { a.hitFlash(); this.allyPulse = 0.8; }
       if (this.allyTimer <= 0) {
-        a.health = a.maxHealth;
-        // a held clip never fades on its own; a fresh action takes over, and the roll reads as getting up
+        // up with part of her health and the rest regenerating, facing the player so the roll
+        // carries her back toward the fight; a held clip never fades on its own, a fresh action does
+        a.health = Math.round(a.maxHealth * A.upHealth);
+        a.yaw = a.targetYaw = Math.atan2(-(this.player.pos.x - a.pos.x), -(this.player.pos.z - a.pos.z));
         a.act(C.DODGE, 0.8, 0.25);
         this.allyState = 'follow';
         this.allyTarget = null;
@@ -661,20 +723,34 @@ export class CombatDirector {
         // run at the target until the chucks can reach
         case 'approach': {
           if (!t) { this.allyState = 'follow'; break; }
+          if (this.allyLeashed(a)) break;
           a.face(t.pos.x, t.pos.z);
           if (d <= A.attackRange * 0.9) { a.vel.set(0, 0, 0); this.allyState = 'combatIdle'; break; }
-          const dx = t.pos.x - a.pos.x, dz = t.pos.z - a.pos.z, dl = Math.hypot(dx, dz) || 1;
           const sp = a.runSpeed * (d < 4 ? 0.7 : 1);
-          a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp);
+          const P = this.player;
+          if (a.distanceTo(P) < 3.5 && segmentDistanceXZ(a.pos, t.pos, P.pos) < 1.8) {
+            // round the player, not through the fight in front of them and the blade in it
+            const cur = this.bearingFrom(P, a);
+            const s = wrapAngle(this.bearingFrom(P, t) - cur) > 0 ? 1 : -1;
+            const radial = Math.max(-1, Math.min(1, (2.3 - a.distanceTo(P)) * 1.5));
+            const vx = Math.cos(cur) * s + Math.sin(cur) * radial, vz = -Math.sin(cur) * s + Math.cos(cur) * radial;
+            const vl = Math.hypot(vx, vz) || 1;
+            a.vel.set((vx / vl) * sp * 0.85, 0, (vz / vl) * sp * 0.85);
+          } else {
+            const dx = t.pos.x - a.pos.x, dz = t.pos.z - a.pos.z, dl = Math.hypot(dx, dz) || 1;
+            a.vel.set((dx / dl) * sp, 0, (dz / dl) * sp);
+          }
           break;
         }
 
         // in reach: face the target and wait out the cooldown
         case 'combatIdle':
           if (!t) { this.allyState = 'follow'; break; }
+          if (this.allyLeashed(a)) break;
           a.face(t.pos.x, t.pos.z);
           a.vel.set(0, 0, 0);
-          if (d > A.holdRange * 1.5) { this.allyState = 'approach'; break; }
+          // step back in once the partner has drifted, and at once when it is her turn and she is a hand short
+          if (d > A.reengageRange || (this.allyCd <= 0 && d >= A.attackRange)) { this.allyState = 'approach'; break; }
           if (this.allyCd <= 0 && d < A.attackRange && !a.busy) {
             const clip = this.rand() < A.flourishChance ? C.NUN_FLOURISH : C.NUN_COMBO;
             this.allyAttackDur = a.act(clip, 0.9);
@@ -689,16 +765,16 @@ export class CombatDirector {
           if (t && this.allyTimer > this.allyAttackDur * 0.6) a.face(t.pos.x, t.pos.z);
           if (this.allyTimer <= 0) {
             this.allyState = 'recover';
-            this.allyTimer = 0.25 + this.rand() * 0.3;
+            this.allyTimer = 0.2 + this.rand() * 0.15;
             this.allyCd = A.cooldown + this.rand() * A.cooldownSpread;
           }
           break;
 
-        // a step back out of reach, which resets the spacing for the next flurry
+        // a short step back, which resets the spacing for the next flurry without walking the duel away
         case 'recover': {
           if (t) {
             const bx = a.pos.x - t.pos.x, bz = a.pos.z - t.pos.z, bl = Math.hypot(bx, bz) || 1;
-            a.vel.set((bx / bl) * 1.5, 0, (bz / bl) * 1.5);
+            a.vel.set((bx / bl) * 1.0, 0, (bz / bl) * 1.0);
             a.face(t.pos.x, t.pos.z);
           } else {
             a.vel.set(0, 0, 0);
@@ -744,21 +820,36 @@ export class CombatDirector {
 
   /**
    * The enemy the player is not fighting: whoever does not hold the attack token, the current one
-   * kept while it still qualifies so she does not flit between targets. When only the token holder
-   * is left she joins the player on it. Nothing further than the fight itself.
+   * kept while it still qualifies so she does not flit between targets. Among the rest, one on her
+   * side of the player first (no crossing the player's line to reach it), a grunt before the elite
+   * (the elite is the player's problem), then the nearest. When only the token holder is left she
+   * joins the player on it. Nothing further from the player than her leash.
    */
   private chooseAllyTarget(): Enemy | null {
-    const live = this.enemies.filter((e) => !e.actor.dead && e.state !== 'dying' && e.actor.distanceTo(this.player) < 22);
+    const P = this.player;
+    const live = this.enemies.filter((e) => !e.actor.dead && e.state !== 'dying' && e.actor.distanceTo(P) < COMBAT.ally.leash + 1);
     if (!live.length) return null;
     const free = live.filter((e) => e !== this.attackToken);
     const pool = free.length ? free : live;
     if (this.allyTarget && pool.includes(this.allyTarget)) return this.allyTarget;
-    let best = pool[0], bd = Infinity;
+    const mine = this.bearingFrom(P, this.ally);
+    let best = pool[0], bs = Infinity;
     for (const e of pool) {
-      const d = e.actor.distanceTo(this.ally);
-      if (d < bd) { bd = d; best = e; }
+      const side = Math.abs(wrapAngle(this.bearingFrom(P, e.actor) - mine)) < Math.PI / 2 ? 0 : 10;
+      const s = side + (e.kind === 'elite' ? 5 : 0) + e.actor.distanceTo(this.ally) * 0.1;
+      if (s < bs) { bs = s; best = e; }
     }
     return best;
+  }
+
+  /** A duel that has drifted too far from the player is broken off; the partner turns back to the player and the fight comes home. */
+  private allyLeashed(a: Actor): boolean {
+    if (a.distanceTo(this.player) <= COMBAT.ally.leash) return false;
+    this.allyTarget = null;
+    this.allyRetarget = 1.5;
+    this.allyState = 'follow';
+    a.vel.set(0, 0, 0);
+    return true;
   }
 
   // ---------------------------------------------------------------- hits
@@ -935,7 +1026,8 @@ export class CombatDirector {
   /** Push overlapping fighters apart so they never occupy the same spot. */
   private separate(dt: number): void {
     const all: Actor[] = [this.player, ...this.enemies.filter((e) => !e.actor.dead).map((e) => e.actor)];
-    if (this.allySpawned) all.push(this.ally);
+    // a body on the ground is stepped over, not shoved around the ring for the time she is down
+    if (this.allySpawned && this.allyState !== 'downed') all.push(this.ally);
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const a = all[i], b = all[j];
@@ -943,7 +1035,9 @@ export class CombatDirector {
         const d = Math.hypot(dx, dz);
         const min = a.radius + b.radius;
         if (d >= min || d < 1e-4) continue;
-        const push = (min - d) * Math.min(1, 12 * dt);
+        // the overlap is resolved in the frame, whatever its length, capped so a bad spawn does not pop
+        const push = Math.min(min - d, 0.3) * 0.5;
+        void dt;
         const nx = dx / d, nz = dz / d;
         // the player is moved through the controller so collision stays authoritative
         if (a === this.player) { this.controller.pos.x -= nx * push; this.controller.pos.z -= nz * push; }
@@ -970,7 +1064,7 @@ export class CombatDirector {
     a.spawn(x, z, yawDeg);
     const en: Enemy = {
       actor: a, state: 'idle', timer: o.timer ?? 0, attackDur: 0.5, id: this.nextEnemyId++, cooldown: o.cooldown ?? 0, moving: false, held: o.held, kind,
-      slot: o.slot ?? 0, target: this.player, ringAng: this.bearingFrom(this.player, a), ringDist: COMBAT.enemy.holdRange, dieT: 0, encounter: o.encounter,
+      slot: o.slot ?? 0, target: this.player, ringAng: this.bearingFrom(this.player, a), ringDist: COMBAT.enemy.holdRange, ringRel: 0, tokenAt: -1e9, dieT: 0, encounter: o.encounter,
     };
     a.anim.setEventHandler((n) => this.onEnemyEvent(en, n));
     a.id = `e${en.id}`;
@@ -1004,8 +1098,7 @@ export class CombatDirector {
     place(this.player, -1.9);
     place(this.ally, 0);
     this.allySpawned = true;
-    this.allyState = 'follow';
-    this.allyTarget = null;
+    this.standAlly();
     void g;
 
     if (!this.enemies.some((e) => e.encounter === -1)) this.spawnEnemy('blade', x, z, 0, { encounter: -1, maxHealth: 9999, timer: 9999 });
@@ -1119,16 +1212,16 @@ export class CombatDirector {
   }
 
   /** Tooling: every live body with its state and where it stands, so a lab can check spacing and intent. */
-  debugFighters(): { id: string; team: string; hp: number; state: string; x: number; z: number; target: string; moving: boolean }[] {
-    const p = this.player;
-    const out = [{ id: p.id, team: p.team, hp: Math.round(this.playerHealth), state: p.anim.actionName ?? 'idle', x: +p.pos.x.toFixed(2), z: +p.pos.z.toFixed(2), target: this.attackToken?.actor.id ?? '-', moving: Math.hypot(p.vel.x, p.vel.z) > 0.05 }];
+  debugFighters(): { id: string; team: string; hp: number; state: string; x: number; z: number; r: number; target: string; moving: boolean }[] {
+    const p = this.player, c = this.controller.pos;   // the controller's position is the one separation moved this frame
+    const out: ReturnType<CombatDirector['debugFighters']> = [{ id: p.id, team: p.team, hp: Math.round(this.playerHealth), state: p.anim.actionName ?? 'idle', x: +c.x.toFixed(3), z: +c.z.toFixed(3), r: p.radius, target: this.attackToken?.actor.id ?? '-', moving: Math.hypot(p.vel.x, p.vel.z) > 0.05 }];
     if (this.allySpawned) {
       const a = this.ally;
-      out.push({ id: a.id, team: a.team, hp: Math.round(a.health), state: this.allyState, x: +a.pos.x.toFixed(2), z: +a.pos.z.toFixed(2), target: this.allyTarget?.actor.id ?? '-', moving: Math.hypot(a.vel.x, a.vel.z) > 0.05 });
+      out.push({ id: a.id, team: a.team, hp: Math.round(a.health), state: this.allyState, x: +a.pos.x.toFixed(3), z: +a.pos.z.toFixed(3), r: a.radius, target: this.allyTarget?.actor.id ?? '-', moving: Math.hypot(a.vel.x, a.vel.z) > 0.05 });
     }
     for (const e of this.enemies) {
       if (e.actor.dead) continue;
-      out.push({ id: e.actor.id, team: 'enemy', hp: Math.round(e.actor.health), state: e.state, x: +e.actor.pos.x.toFixed(2), z: +e.actor.pos.z.toFixed(2), target: e.target.id, moving: e.moving });
+      out.push({ id: e.actor.id, team: e.kind, hp: Math.round(e.actor.health), state: e.state, x: +e.actor.pos.x.toFixed(3), z: +e.actor.pos.z.toFixed(3), r: e.actor.radius, target: e.target.id, moving: e.moving });
     }
     return out;
   }
@@ -1163,10 +1256,20 @@ export class CombatDirector {
     if (ally) {
       this.summonAlly(px - right.x * 2.2 - fwd.x * 0.8, pz - right.z * 2.2 - fwd.z * 0.8, yaw / DEG);
     } else {
+      this.standAlly();
       this.allySpawned = false;
       this.ally.root.enabled = false;
     }
+    this.hitLog.length = 0;
+    this.maxAttackersOnP = 0;
+    this.maxOpenOnP = 0;
     this.passToken();
+  }
+
+  /** Tooling: the player's health, settable so a lab can force the respawn without a long fight. */
+  debugPlayerHealth(hp?: number): number {
+    if (hp !== undefined) this.playerHealth = Math.max(1, Math.min(COMBAT.player.maxHealth, hp));
+    return this.playerHealth;
   }
 
   /** Debug/tooling: drop the player straight into an encounter. */
@@ -1186,6 +1289,7 @@ export class CombatDirector {
       hits: this.hitLog.slice(-4).map((h) => `#${h.attack} ${h.src}>${h.target} ${h.dmg}`).join('  '),
       preview: this.previewMode ?? '-',
       token: this.attackToken?.actor.id ?? '-',
+      attackersOnP: this.maxAttackersOnP, openOnP: this.maxOpenOnP,
       ally: this.allySpawned ? `${this.allyState}@${Math.round(this.ally.health)}` : '-',
       allyTarget: this.allyTarget?.actor.id ?? '-',
       nearest: this.enemies.length ? Math.min(...this.enemies.map((e) => e.actor.distanceTo(this.player))).toFixed(1) : '-',
@@ -1202,6 +1306,14 @@ export class CombatDirector {
     this.enemies.length = 0;
     this.fx.destroy();
   }
+}
+
+/** Distance from `p` to the segment a→b on the ground plane. */
+function segmentDistanceXZ(a: Vec3, b: Vec3, p: Vec3): number {
+  const abx = b.x - a.x, abz = b.z - a.z;
+  const l2 = abx * abx + abz * abz;
+  const t = l2 > 1e-6 ? Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.z - a.z) * abz) / l2)) : 0;
+  return Math.hypot(a.x + abx * t - p.x, a.z + abz * t - p.z);
 }
 
 export { smoothstep };
