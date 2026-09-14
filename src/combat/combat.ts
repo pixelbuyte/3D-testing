@@ -241,7 +241,7 @@ export class CombatDirector {
     this.updatePlayer(dt, input, !freeCam);
     this.updateEnemies(dt);
     this.updateAlly(dt);
-    this.separate(dt);
+    this.separate();
 
     this.submitCapsules();
     this.debugDraw.update(dt);
@@ -1031,27 +1031,31 @@ export class CombatDirector {
     }
   }
 
-  /** Push overlapping fighters apart so they never occupy the same spot. */
-  private separate(dt: number): void {
+  /**
+   * Push overlapping fighters apart so they never occupy the same spot. The overlap is resolved
+   * within the frame whatever its length (capped, so a bad spawn does not pop), and the pairs are
+   * visited three times because pushing a body out of one neighbour can push it into another.
+   */
+  private separate(): void {
     const all: Actor[] = [this.player, ...this.enemies.filter((e) => !e.actor.dead).map((e) => e.actor)];
     // a body on the ground is stepped over, not shoved around the ring for the time she is down
     if (this.allySpawned && this.allyState !== 'downed') all.push(this.ally);
-    for (let i = 0; i < all.length; i++) {
-      for (let j = i + 1; j < all.length; j++) {
-        const a = all[i], b = all[j];
-        const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
-        const d = Math.hypot(dx, dz);
-        const min = a.radius + b.radius;
-        if (d >= min || d < 1e-4) continue;
-        // the overlap is resolved in the frame, whatever its length, capped so a bad spawn does not pop
-        const push = Math.min(min - d, 0.3) * 0.5;
-        void dt;
-        const nx = dx / d, nz = dz / d;
-        // the player is moved through the controller so collision stays authoritative
-        if (a === this.player) { this.controller.pos.x -= nx * push; this.controller.pos.z -= nz * push; }
-        else { a.pos.x -= nx * push; a.pos.z -= nz * push; }
-        if (b === this.player) { this.controller.pos.x += nx * push; this.controller.pos.z += nz * push; }
-        else { b.pos.x += nx * push; b.pos.z += nz * push; }
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          const a = all[i], b = all[j];
+          const ax = a === this.player ? this.controller.pos.x : a.pos.x, az = a === this.player ? this.controller.pos.z : a.pos.z;
+          const dx = b.pos.x - ax, dz = b.pos.z - az;
+          const d = Math.hypot(dx, dz);
+          const min = a.radius + b.radius;
+          if (d >= min || d < 1e-4) continue;
+          const push = Math.min(min - d, 0.5) * 0.5;
+          const nx = dx / d, nz = dz / d;
+          // the player is moved through the controller so collision stays authoritative
+          if (a === this.player) { this.controller.pos.x -= nx * push; this.controller.pos.z -= nz * push; }
+          else { a.pos.x -= nx * push; a.pos.z -= nz * push; }
+          b.pos.x += nx * push; b.pos.z += nz * push;
+        }
       }
     }
   }
@@ -1271,6 +1275,8 @@ export class CombatDirector {
     this.hitLog.length = 0;
     this.maxAttackersOnP = 0;
     this.maxOpenOnP = 0;
+    this.playerHealth = COMBAT.player.maxHealth;
+    this.playerHurtCd = 0;
     this.passToken();
   }
 
