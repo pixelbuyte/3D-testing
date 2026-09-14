@@ -1017,7 +1017,15 @@ export class CombatDirector {
     const e = this.active;
     if (e) {
       this.controller.pos.set(e.x, this.world.field.heightAt(e.x, e.z - e.radius * 0.8), e.z - e.radius * 0.8);
-      for (const en of this.enemies) if (!en.actor.dead) { en.state = 'idle'; en.timer = 1.4; }
+      for (const en of this.enemies) {
+        if (en.actor.dead) continue;
+        en.state = 'idle';
+        en.timer = 1.4;
+        // a swing in progress is abandoned with its window closed, or an "idle" enemy could still cut
+        en.actor.anim.stopAction();
+        en.actor.hitOpen = false;
+        en.actor.hitTail = false;
+      }
       // she comes back with the player, on her feet
       if (this.allySpawned) this.summonAlly(e.x - 2.2, e.z - e.radius * 0.8 - 0.8, 0);
     }
